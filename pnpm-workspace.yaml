@@ -1,0 +1,7 @@
+packages:
+  # executable/launchable applications
+  - 'apps/*'
+  # all packages in subdirs of packages/
+  - 'packages/*'
+  # exclude a specific directory
+  - '! **/test/**'

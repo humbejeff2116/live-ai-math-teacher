@@ -1,0 +1,17 @@
+{
+  "name": "gemini-live-teacher",
+  "private": true,
+  "packageManager": "pnpm@9.0.0",
+  "scripts": {
+    "dev": "pnpm --filter frontend --filter backend --parallel dev",
+    "build": "pnpm -r build"
+  },
+  "pnpm": {
+    "overrides": {
+      "vite": "npm:rolldown-vite@7.2.5"
+    }
+  },
+  "dependencies": {
+    "turbo": "^2.7.3"
+  }
+}
