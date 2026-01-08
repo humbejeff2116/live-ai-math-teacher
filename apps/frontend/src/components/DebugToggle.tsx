@@ -2,12 +2,12 @@ import { useState } from "react";
 import { DebugOverlay } from "./DebugOverlay";
 
 export function DebugToggle() {
-  const [enabled, setEnabled] = useState(false);
+  const [open, setOpen] = useState(false);
 
   return (
     <>
       <button
-        onClick={() => setEnabled((v) => !v)}
+        onClick={() => setOpen((o) => !o)}
         style={{
           position: "fixed",
           bottom: 16,
@@ -16,10 +16,10 @@ export function DebugToggle() {
           borderRadius: 6,
         }}
       >
-        {enabled ? "Hide Debug" : "Show Debug"}
+        {open ? "Hide Debug" : "Show Debug"}
       </button>
 
-      {enabled && <DebugOverlay />}
+      {open && <DebugOverlay />}
     </>
   );
 }

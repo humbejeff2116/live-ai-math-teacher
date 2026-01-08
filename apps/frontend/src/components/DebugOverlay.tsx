@@ -1,9 +1,16 @@
-import { useTeachingState } from "../state/teachingState";
+import { useDebugState } from "../state/debugState";
+
 
 export function DebugOverlay() {
-  const { state } = useTeachingState();
+  const { state } = useDebugState();
 
-  if (!state) return null;
+  if (!state.sessionStartedAt) return null;
+
+  // TODO... fix bug - Error: Cannot call impure function during render
+  //`Date.now` is an impure function. 
+  // Calling an impure function can produce unstable results that update 
+  // unpredictably when the component happens to re-render. 
+  const uptime = Math.floor((Date.now() - state.sessionStartedAt) / 1000) + "s";
 
   return (
     <div
@@ -11,38 +18,36 @@ export function DebugOverlay() {
         position: "fixed",
         top: 16,
         right: 16,
-        width: 260,
-        padding: 12,
-        background: "rgba(0,0,0,0.8)",
+        width: 280,
+        background: "rgba(0,0,0,0.85)",
         color: "#fff",
+        padding: 12,
         borderRadius: 8,
         fontSize: 13,
         zIndex: 9999,
       }}
     >
-      <strong>🧠 AI Teaching State</strong>
+      <strong>🧠 Live Debug</strong>
 
       <div style={{ marginTop: 8 }}>
         <div>
-          📘 Mode: <b>{state.mode}</b>
-        </div>
-        <div>
-          😕 Confusion:{" "}
-          <b
-            style={{
-              color:
-                state.confusionLevel === "high"
-                  ? "#ff6b6b"
-                  : state.confusionLevel === "medium"
-                  ? "#feca57"
-                  : "#1dd1a1",
-            }}
-          >
-            {state.confusionLevel}
+          🔌 WS:{" "}
+          <b style={{ color: state.connected ? "#1dd1a1" : "#ff6b6b" }}>
+            {state.connected ? "Connected" : "Disconnected"}
           </b>
         </div>
-        <div>🔁 Attempts: {state.attempts}</div>
-        <div>✅ Solved: {state.solved ? "Yes" : "No"}</div>
+
+        <div>⏱ Uptime: {uptime}</div>
+        <div>💬 AI Messages: {state.aiMessageCount}</div>
+
+        {state.lastLatencyMs && <div>⚡ Latency: {state.lastLatencyMs}ms</div>}
+
+        {state.lastTranscript && (
+          <div style={{ marginTop: 6 }}>
+            🎤 Last Input:
+            <div style={{ opacity: 0.85 }}>“{state.lastTranscript}”</div>
+          </div>
+        )}
       </div>
     </div>
   );

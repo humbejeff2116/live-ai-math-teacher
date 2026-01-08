@@ -1,4 +1,5 @@
 import './App.css'
+import { DebugToggle } from './components/DebugToggle';
 import { Landing } from './pages/Landing';
 import { TeachingSession } from './pages/TeachSession';
 
@@ -7,6 +8,7 @@ function App() {
     <>
       <Landing />
       <TeachingSession />
+      <DebugToggle />
     </>
   );
 }
