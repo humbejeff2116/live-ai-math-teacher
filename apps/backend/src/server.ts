@@ -1,7 +1,12 @@
+import http from "node:http";
 import { app } from "./app";
+import { startWebSocketServer } from "./websocket/wsServer";
+import { env } from "./config/env";
 
-const PORT = process.env.PORT || 3001;
+const server = http.createServer(app);
 
-app.listen(PORT, () => {
-  console.log(`Backend running on http://localhost:${PORT}`);
+startWebSocketServer(server);
+
+server.listen(env.port, () => {
+  console.log(`Backend running on http://localhost:${env.port}`);
 });
