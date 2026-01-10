@@ -1,3 +1,4 @@
+import type { EquationStep } from "@shared/types";
 import { createContext, useContext } from "react";
 
 export type DebugState = {
@@ -6,6 +7,9 @@ export type DebugState = {
   aiMessageCount: number;
   lastLatencyMs?: number;
   sessionStartedAt?: number;
+  interruptedCount: number;
+  isReconnecting: boolean;
+  lastEquationStep?: EquationStep;
 };
 
 export const DebugContext = createContext<{
