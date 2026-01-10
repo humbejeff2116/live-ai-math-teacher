@@ -1,9 +1,25 @@
 import { useState } from "react";
 import { useLiveSession } from "../session/useLiveSession";
+import { useSpeechInput } from "../speech/useSpeechInput";
+import { VoiceInputButton } from "../components/VoiceInputButton";
+import { EquationSteps } from "../components/EquationSteps";
 
 export function TeachingSession() {
-  const { messages, sendUserMessage } = useLiveSession();
+  const { 
+    // messages, 
+    streamingText, 
+    equationSteps, 
+    sendUserMessage 
+  } = useLiveSession();
   const [input, setInput] = useState("");
+  const [isListening, setIsListening] = useState(false);
+
+  const { startListening } = useSpeechInput(
+  (text) => {
+    sendUserMessage(text);
+  },
+  setIsListening
+);
 
   return (
     <div style={{ padding: 24 }}>
@@ -17,26 +33,42 @@ export function TeachingSession() {
           marginBottom: 12,
         }}
       >
-        {messages.map((msg, i) => (
+        {streamingText && (
+          <div className="ai-streaming">
+            {streamingText}
+            <span className="cursor">▍</span>
+          </div>
+        )}
+        {equationSteps && (
+          <EquationSteps steps={equationSteps}/>
+        )}
+        {/* {messages.map((msg, i) => (
           <p key={i}>{msg}</p>
-        ))}
+        ))} */}
       </div>
 
-      <input
-        value={input}
-        onChange={(e) => setInput(e.target.value)}
-        placeholder="Say or type your answer..."
-        style={{ width: "80%", marginRight: 8 }}
-      />
+      <div style={{ marginBottom: 12 }}>
+        <input
+          value={input}
+          onChange={(e) => setInput(e.target.value)}
+          placeholder="Type your answer..."
+          style={{ width: "70%", marginRight: 8 }}
+        />
 
-      <button
-        onClick={() => {
-          sendUserMessage(input);
-          setInput("");
-        }}
-      >
-        Send
-      </button>
+        <button
+          onClick={() => {
+            sendUserMessage(input);
+            setInput("");
+          }}
+        >
+          Send
+        </button>
+      </div>
+
+      <VoiceInputButton
+        listening={isListening}
+        handleStartListening={startListening}
+      />
     </div>
   );
 }
