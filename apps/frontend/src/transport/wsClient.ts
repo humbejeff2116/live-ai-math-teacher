@@ -1,10 +1,12 @@
-import type { ClientToServerMessage, ServerToClientMessage } from "./wsTypes";
+import type { ServerToClientMessage, ClientToServerMessage } from "@shared/types";
 
 type MessageHandler = (msg: ServerToClientMessage) => void;
 
 export class LiveWSClient {
   private socket: WebSocket | null = null;
   private handler: MessageHandler;
+  public onOpen?: () => void;
+  public onClose?: () => void;
 
   constructor(handler: MessageHandler) {
     this.handler = handler;
@@ -17,6 +19,7 @@ export class LiveWSClient {
 
     this.socket.onopen = () => {
       console.log("WS connected");
+      this.onOpen?.();
     };
 
     this.socket.onmessage = (event) => {
@@ -31,6 +34,7 @@ export class LiveWSClient {
     this.socket.onclose = () => {
       console.log("WS closed");
       this.socket = null;
+      this.onClose?.();
     };
   }
 
