@@ -17,5 +17,6 @@ export const env = {
   gemini: {
     apiKey: requireEnv("GEMINI_API_KEY"),
     projectId: requireEnv("GEMINI_PROJECT_ID"),
+    liveWsUrl: requireEnv("GEMINI_LIVE_WS_URL"),
   },
 };
