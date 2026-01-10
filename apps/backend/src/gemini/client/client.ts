@@ -1,4 +1,6 @@
 import { env } from "../../config/env";
-import { GoogleGenerativeAI } from "@google/generative-ai";
+import { GoogleGenAI } from "@google/genai";
 
-export const geminiClient = new GoogleGenerativeAI(env.gemini.apiKey);
+export const geminiClient = new GoogleGenAI({
+  apiKey: env.gemini.apiKey,
+});
