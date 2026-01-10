@@ -1,11 +1,14 @@
-import { useTeachingSession } from "../session/useTeachingSession";
 
-export function VoiceInputButton({ sessionId }: { sessionId: string }) {
-  const { startListening, listening } = useTeachingSession(sessionId);
-
+export function VoiceInputButton({
+  listening,
+  handleStartListening,
+}: {
+  listening: boolean;
+  handleStartListening: () => void;
+}) {
   return (
     <button
-      onClick={startListening}
+      onClick={handleStartListening}
       disabled={listening}
       style={{
         padding: "12px 20px",
@@ -13,7 +16,7 @@ export function VoiceInputButton({ sessionId }: { sessionId: string }) {
         borderRadius: "8px",
       }}
     >
-      {listening ? "Listening..." : "Answer by voice"}
+      {listening ? "Listening..." : "🎤 Answer By Voice"}
     </button>
   );
 }
