@@ -1,54 +1,127 @@
+import { useEffect, useState } from "react";
 import { useDebugState } from "../state/debugState";
+import { useWebSocketState } from "../state/weSocketState";
 
 
 export function DebugOverlay() {
+  const { reconnect } = useWebSocketState()!;
   const { state } = useDebugState();
+  const [uptime, setUptime] = useState("0s");
+  const [collapsed, setCollapsed] = useState(false);
+
+  useEffect(() => {
+    let interval = null;
+
+    if (!state.sessionStartedAt) return;
+    if (state.connected && !state.isReconnecting) {
+      interval = setInterval(() => {
+        const seconds = Math.floor(
+          (Date.now() - Number(state.sessionStartedAt)) / 1000
+        );
+        setUptime(`${seconds}s`);
+      }, 1000);
+
+    } else {
+      if (interval) clearInterval(interval);
+    }
+
+    return () => {
+      if (interval) {
+        clearInterval(interval);
+      }
+    }
+  }, [state.connected, state.isReconnecting, state.sessionStartedAt]);
 
   if (!state.sessionStartedAt) return null;
-
-  // TODO... fix bug - Error: Cannot call impure function during render
-  //`Date.now` is an impure function. 
-  // Calling an impure function can produce unstable results that update 
-  // unpredictably when the component happens to re-render. 
-  const uptime = Math.floor((Date.now() - state.sessionStartedAt) / 1000) + "s";
 
   return (
     <div
       style={{
+        padding: "1rem",
+        border: "1px solid #ccc",
+        borderRadius: "8px",
         position: "fixed",
         top: 16,
         right: 16,
         width: 280,
         background: "rgba(0,0,0,0.85)",
         color: "#fff",
-        padding: 12,
-        borderRadius: 8,
+        // padding: 12,
+        // borderRadius: 8,
         fontSize: 13,
         zIndex: 9999,
       }}
     >
-      <strong>🧠 Live Debug</strong>
+      <div
+        style={{
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "space-between",
+          marginBottom: "8px",
+        }}
+      >
+        <h3 style={{ margin: 0 }}>Debug Info</h3>
 
-      <div style={{ marginTop: 8 }}>
-        <div>
-          🔌 WS:{" "}
-          <b style={{ color: state.connected ? "#1dd1a1" : "#ff6b6b" }}>
-            {state.connected ? "Connected" : "Disconnected"}
-          </b>
-        </div>
-
-        <div>⏱ Uptime: {uptime}</div>
-        <div>💬 AI Messages: {state.aiMessageCount}</div>
-
-        {state.lastLatencyMs && <div>⚡ Latency: {state.lastLatencyMs}ms</div>}
-
-        {state.lastTranscript && (
-          <div style={{ marginTop: 6 }}>
-            🎤 Last Input:
-            <div style={{ opacity: 0.85 }}>“{state.lastTranscript}”</div>
-          </div>
-        )}
+        <button
+          onClick={() => setCollapsed((c) => !c)}
+          style={{
+            background: "transparent",
+            color: "#fff",
+            border: "1px solid #555",
+            borderRadius: 4,
+            padding: "2px 8px",
+            cursor: "pointer",
+            fontSize: 12,
+          }}
+        >
+          {collapsed ? "Expand" : "Collapse"}
+        </button>
       </div>
+
+      {!collapsed && (
+        <>
+          <p>
+            Status:
+            <span style={{ color: state.connected ? "green" : "red" }}>
+              {state.connected ? " ● Connected" : " ○ Disconnected"}
+            </span>
+          </p>
+
+          <button
+            onClick={reconnect}
+            style={{
+              marginTop: "8px",
+              padding: "4px 12px",
+              cursor: "pointer",
+              backgroundColor: "#007bff",
+              color: "white",
+              border: "none",
+              borderRadius: "4px",
+            }}
+          >
+            Force Reconnect
+          </button>
+
+          <hr />
+
+          <p>⏱ Uptime: {uptime}</p>
+          <p>💬 AI Messages: {state.aiMessageCount}</p>
+          <p>🛑 Interrupted: {state.interruptedCount}</p>
+          <p>⚡ Latency: {state.lastLatencyMs}ms</p>
+
+          {state.lastEquationStep && (
+            <>
+              <hr />
+              <p>
+                <strong>📐 Last Equation Step</strong>
+              </p>
+              <p>Index: {state.lastEquationStep.id}</p>
+              <p>Type: {state.lastEquationStep.equation}</p>
+              <p style={{ opacity: 0.8 }}>{state.lastEquationStep.description}</p>
+            </>
+          )}
+        </>
+      )}
     </div>
   );
 }
