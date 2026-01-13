@@ -1,5 +1,5 @@
 import WebSocket from "ws";
-import { GeminiLiveSession } from "../gemini/live/liveSession";
+import { GeminiLiveSession } from "../gemini/live/GeminiLiveSession";
 import { ClientToServerMessage } from "@shared/types";
 
 export function liveSocketHandler(ws: WebSocket) {
@@ -16,6 +16,30 @@ export function liveSocketHandler(ws: WebSocket) {
 
       case "user_interrupt":
         session.interrupt();
+        break;
+
+      case "resume_request":
+        session.resumeFromInterruption({
+          studentUtterance: msg.payload.studentUtterance,
+          clientStepIndex: msg.payload.lastKnownStepIndex
+        });
+        break;
+
+       case "reexplain_step": 
+        session.reExplainStep(
+          msg.payload.stepId,
+          msg.payload.style
+        );
+        break;
+
+      case "select_step_nl":
+        session.handleNaturalLanguageStepSelection(
+          msg.payload.text
+        );
+        break;
+
+      case "confusion_signal":
+        session.handleConfusion(msg.payload.text);
         break;
     }
   });
