@@ -1,11 +1,11 @@
-import { randomUUID } from "crypto";
+import { randomUUID } from "node:crypto";
 import { EquationStep } from "@shared/types";
-
-const STEP_BOUNDARIES = ["now", "next", "then", "so", "therefore", "we get"];
 
 export class StreamingStepExtractor {
   private buffer = "";
   private steps: EquationStep[] = [];
+  private stepIndex = 0;
+  // private lastStep: EquationStep | null = null;
 
   pushText(delta: string): EquationStep | null {
     this.buffer += delta;
@@ -26,23 +26,37 @@ export class StreamingStepExtractor {
   }
 
   private tryExtractStep(text: string): EquationStep | null {
-    // Very intentional: we don't overfit
     const equationMatch = text.match(
       /([0-9a-zA-Z+\-*/\s=]+=[0-9a-zA-Z+\-*/\s]+)/i
     );
 
     if (!equationMatch) return null;
 
-    return {
+    const step: EquationStep = {
       id: randomUUID(),
-      description: text,
+      index: this.stepIndex++,
       equation: equationMatch[1].trim(),
+      text: text,
+      type: text.includes("simplify")
+        ? "simplify"
+        : text.includes("therefore") || text.includes("so")
+        ? "result"
+        : "transform",
     };
+
+    // this.lastStep = step;
+    return step;
   }
+
+  // getLastStep() {
+  //   return this.lastStep;
+  // }
 
   reset() {
     this.buffer = "";
     this.steps = [];
+    this.stepIndex = 0;
+    // this.lastStep = null;
   }
 
   getSteps() {
