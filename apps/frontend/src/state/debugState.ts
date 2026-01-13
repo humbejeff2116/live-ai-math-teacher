@@ -10,6 +10,10 @@ export type DebugState = {
   interruptedCount: number;
   isReconnecting: boolean;
   lastEquationStep?: EquationStep;
+  activeStepId?: string;
+  confusionCount?: number;
+  reexplainedStepIndex?: number;
+  confusionHandledStepIndex?: number;
 };
 
 export const DebugContext = createContext<{
