@@ -24,7 +24,7 @@ export function buildResumePrompt(
 You were explaining a linear equation.
 
 The last completed step was:
-"${lastStep.description}"
+"${lastStep.text}"
 Equation:
 ${lastStep.equation}
 
