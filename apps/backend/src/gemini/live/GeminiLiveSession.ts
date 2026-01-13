@@ -1,154 +1,300 @@
-import { WebSocket } from "ws";
-import { GeminiLiveClient } from "./liveClient";
-import { StreamingStepExtractor } from "../stepExtractor";
-import { EquationStep, ServerToClientMessage } from "@shared/types";
-import { GeminiLiveAudioClient } from "./liveAudioClient";
-import { buildFreshPrompt, buildResumePrompt } from "./promptBuilder";
+import WebSocket from "ws";
+import {
+  ServerToClientMessage,
+  TeacherSignal,
+  TeacherState,
+  EquationStep,
+} from "@shared/types";
+import { GeminiLiveAudioClient } from "./GeminiLiveAudioClient";
+import { StreamingStepExtractor } from "../StreamingStepExtractor";
+import { buildFreshPrompt, buildResumePrompt } from "../prompts";
+import { resolveConfusedStep, resolveStepFromText } from "../stepResolution";
+import { GeminiLiveStreamingClient } from "../streaming/GeminiLiveStreamingClient";
+import { GeminiStreamingClient } from "../streaming/GeminiStreamingClient";
+import { AudioClock } from "./AudioClock";
+import { StepAudioTracker } from "./StepAudioTracker";
+
+
+/* ----------------------------------------
+ * Resume context
+ * ------------------------------------- */
 
 type ResumeContext = {
   lastCompletedStep?: EquationStep;
-  partialSentence?: string;
   fullExplanationSoFar: string;
 };
 
+/* ----------------------------------------
+ * GeminiLiveSession
+ * ------------------------------------- */
+
 export class GeminiLiveSession {
-  private client = new GeminiLiveClient();
+  private streamingClient: GeminiStreamingClient;
   private stepExtractor = new StreamingStepExtractor();
   private audioClient: GeminiLiveAudioClient;
+
   private abortController: AbortController | null = null;
   private isSpeaking = false;
+  private aborted = false;
+
+  private teacherState: TeacherState = "idle";
+  private currentSpokenStepId: string | null = null;
+
   private resumeContext: ResumeContext = {
     fullExplanationSoFar: "",
   };
 
+  private audioClock = new AudioClock();
+  private stepAudioTracker = new StepAudioTracker(this.audioClock);
+
   constructor(private ws: WebSocket) {
-    this.audioClient = new GeminiLiveAudioClient((chunk) => {
-      if (!this.isSpeaking) return;
-
-      this.ws.send(
-        JSON.stringify({
-          type: "ai_audio_chunk",
-          payload: {
-            audioBase64: chunk.toString("base64"),
-          },
-        })
-      );
-    });
-  }
-
-  async handleUserMessage(text: string, resume = false) {
-    // Cancel any previous turn
-    this.interrupt();
-
-    this.abortController = new AbortController();
-    this.isSpeaking = true;
-
-    const prompt = resume
-      ? this.buildResumePrompt(text)
-      : this.buildFreshPrompt(text);
-
-    const stream = this.client.streamGenerate({
-      model: "gemini-2.0-flash",
-      input: prompt,
-      signal: this.abortController?.signal,
-    });
-
-    try {
-      for await (const chunk of stream) {
-        if (!this.isSpeaking) return;
-        if (!chunk.text) continue;
-
-        this.resumeContext.fullExplanationSoFar += chunk.text;
-
-        // 1) Stream raw text
+    this.streamingClient = new GeminiLiveStreamingClient();
+    this.audioClient = new GeminiLiveAudioClient(
+      (chunk) => {
         this.ws.send(
           JSON.stringify({
-            type: "ai_message_chunk",
+            type: "ai_audio_chunk",
             payload: {
-              textDelta: chunk.text,
-              isFinal: false,
+              audioBase64: chunk.toString("base64"),
             },
-          } as ServerToClientMessage)
+          })
         );
-
-        // 2) Attempt step extraction
-        const step = this.stepExtractor.pushText(chunk.text);
-        if (step) {
-          this.resumeContext.lastCompletedStep = step;
+      },
+      {
+        onStepStart: (stepId) => {
+          const atMs = this.audioClock.nowMs();
+          this.stepAudioTracker.startStep(stepId);
 
           this.ws.send(
             JSON.stringify({
-              type: "equation_step",
-              payload: step,
+              type: "step_audio_start",
+              payload: { stepId, atMs },
             })
           );
-        }
-      }
-    } catch (err) {
-      if ((err as any).name !== "AbortError") {
-        console.error("Gemini stream error", err);
-      }
-    } finally {
-      this.isSpeaking = false;
-    }
-
-    // Final signal
-    this.ws.send(
-      JSON.stringify({
-        type: "ai_message_chunk",
-        payload: {
-          textDelta: "",
-          isFinal: true,
         },
-      })
+        onStepEnd: (stepId) => {
+          const atMs = this.audioClock.nowMs();
+          this.stepAudioTracker.endStep(stepId);
+
+          this.ws.send(
+            JSON.stringify({
+              type: "step_audio_end",
+              payload: { stepId, atMs },
+            })
+          );
+        },
+      }
     );
-
-    // Optional: send full message for logs
-    this.ws.send(
-      JSON.stringify({
-        type: "ai_message",
-        payload: { text: this.resumeContext.fullExplanationSoFar },
-      })
-    );
-
-    // send text to Gemini Live Audio
-    this.audioClient.sendTextPrompt(this.resumeContext.fullExplanationSoFar);
   }
 
-  private buildFreshPrompt(input: string) {
-    return buildFreshPrompt(input);
+  /* ----------------------------------------
+   * Transport helpers
+   * ------------------------------------- */
+
+  private send(msg: ServerToClientMessage) {
+    this.ws.send(JSON.stringify(msg));
   }
 
-  private buildResumePrompt(input: string) {
-    return buildResumePrompt(input, this.resumeContext.lastCompletedStep);
+  private setState(state: TeacherState, signal?: TeacherSignal) {
+    this.teacherState = state;
+    if (signal) this.send(signal);
   }
 
-  public hasResumeContext() {
-    return Boolean(this.resumeContext.lastCompletedStep);
+  /* ----------------------------------------
+   * Public API
+   * ------------------------------------- */
+
+  async handleUserMessage(text: string, resume = false) {
+    this.interrupt();
+
+    this.setState("thinking", { type: "teacher_thinking" });
+
+    const prompt = resume
+      ? buildResumePrompt(text, this.resumeContext.lastCompletedStep)
+      : buildFreshPrompt(text);
+
+    await this.streamExplanation(prompt);
   }
 
   interrupt() {
+    if (this.teacherState === "explaining") {
+      this.setState("interrupted", {
+        type: "teacher_interrupted",
+        lastCompletedStepIndex:
+          this.resumeContext.lastCompletedStep?.index ?? null,
+      });
+    }
+
     this.abortController?.abort();
     this.abortController = null;
+    this.aborted = true;
     this.isSpeaking = false;
+    this.stepAudioTracker.interrupt();
+    this.audioClock.reset();
     this.audioClient.stop();
-    this.stepExtractor.reset();
 
-    this.ws.send(
-      JSON.stringify({
-        type: "ai_interrupted",
-      })
-    );
+    this.send({ type: "ai_interrupted" });
   }
 
-  // Call this when:User explicitly asks a new question or session restarts
-  resetSession() {
-    this.resumeContext = { fullExplanationSoFar: "" };
-    this.stepExtractor.reset();
+  async resumeFromInterruption(args: {
+    studentUtterance: string;
+    clientStepIndex: number | null;
+  }) {
+    const resumeIndex =
+      this.resumeContext.lastCompletedStep?.index ?? args.clientStepIndex ?? -1;
+
+    this.send({
+      type: "ai_resumed",
+      payload: { resumeFromStepIndex: resumeIndex },
+    });
+
+    const prompt = `
+    You are a real-time math tutor.
+
+    Last completed step index: ${resumeIndex}
+
+    Resume from the NEXT step only.
+    Do not repeat earlier steps.
+
+    Student said:
+    "${args.studentUtterance}"
+    `.trim();
+
+    await this.streamExplanation(prompt);
+  }
+
+  async reExplainStep(stepId: string, style = "simpler") {
+    const step = this.resumeContext.lastCompletedStep;
+    if (!step || step.id !== stepId) return;
+
+    this.interrupt();
+
+    const prompt = `
+    Re-explain ONLY this step.
+    Style: ${style}
+
+    ${step.text}
+    Equation: ${step.equation}
+    `.trim();
+
+    await this.streamExplanation(prompt);
+
+    this.send({
+      type: "ai_reexplained",
+      payload: { reexplainedStepIndex: step.index },
+    });
+  }
+
+  async handleNaturalLanguageStepSelection(text: string) {
+    const steps = this.stepExtractor.getSteps();
+    const step = resolveStepFromText(text, steps);
+
+    if (!step) {
+      await this.handleUserMessage(
+        "Which step would you like me to explain again?"
+      );
+      return;
+    }
+
+    await this.reExplainStep(step.id, "simpler");
+  }
+
+  async handleConfusion(text: string) {
+    const steps = this.stepExtractor.getSteps();
+    const step = resolveConfusedStep(text, steps, this.currentSpokenStepId);
+
+    if (!step) {
+      await this.handleUserMessage(
+        "I can slow down or explain a step again — which part is confusing?"
+      );
+      return;
+    }
+
+    await this.reExplainStep(step.id, "simpler");
+
+    this.send({
+      type: "ai_confusion_handled",
+      payload: { confusionHandledStepIndex: step.index },
+    });
+  }
+
+  hasResumeContext() {
+    return Boolean(this.resumeContext.lastCompletedStep);
   }
 
   close() {
     this.interrupt();
     this.audioClient.close();
+  }
+
+  /* ----------------------------------------
+   * Streaming core
+   * ------------------------------------- */
+
+  private async streamExplanation(prompt: string) {
+    this.abortController = new AbortController();
+    this.aborted = false;
+    this.isSpeaking = true;
+    this.stepExtractor.reset();
+    this.resumeContext.fullExplanationSoFar = "";
+
+    const stream = this.streamingClient.streamText(prompt, {
+      signal: this.abortController.signal,
+    });
+
+    let started = false;
+
+    try {
+      for await (const chunk of stream) {
+        if (this.aborted || !chunk.text) break;
+
+        if (!started) {
+          started = true;
+          this.setState("explaining", {
+            type: "teacher_explaining",
+            stepIndex: this.resumeContext.lastCompletedStep?.index,
+          });
+        }
+
+        this.resumeContext.fullExplanationSoFar += chunk.text;
+
+        this.send({
+          type: "ai_message_chunk",
+          payload: { textDelta: chunk.text, isFinal: false },
+        });
+
+        const step = this.stepExtractor.pushText(chunk.text);
+
+        if (step) {
+          this.resumeContext.lastCompletedStep = step;
+          this.currentSpokenStepId = step.id;
+
+          this.send({ type: "equation_step", payload: step });
+          this.send({
+            type: "step_audio_start",
+            payload: { stepId: step.id, index: step.index },
+          });
+
+          // 🔊 Step-aware audio
+          await this.audioClient.speakStep(step.id, step.text);
+        }
+      }
+    } finally {
+      this.isSpeaking = false;
+
+      this.send({
+        type: "ai_message_chunk",
+        payload: { textDelta: "", isFinal: true },
+      });
+
+      this.send({
+        type: "ai_message",
+        payload: { text: this.resumeContext.fullExplanationSoFar },
+      });
+
+      if (!this.aborted) {
+        this.setState("waiting", { type: "teacher_waiting" });
+      }
+    }
   }
 }
