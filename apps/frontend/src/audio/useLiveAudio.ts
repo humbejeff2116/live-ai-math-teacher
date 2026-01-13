@@ -1,11 +1,18 @@
-import { useCallback, useEffect, useRef } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { LiveAudioPlayer } from "./liveAudioPlayer";
+import type { AudioPlaybackState } from "./audioTypes";
 
 export function useLiveAudio() {
+  const [state, setState] = useState<AudioPlaybackState>("idle");
   const playerRef = useRef<LiveAudioPlayer | null>(null);
 
   useEffect(() => {
-    playerRef.current = new LiveAudioPlayer();
+    if (!playerRef.current) {
+      playerRef.current = new LiveAudioPlayer(
+        () => setState("playing"),
+        () => setState("idle")
+      );
+    }
     return () => {
       playerRef.current = null;
     };
@@ -16,5 +23,19 @@ export function useLiveAudio() {
     playerRef.current?.enqueueChunk(base64);
   }, []);
 
-  return { playChunk };
+  // Wrap in useCallback
+  const stop = useCallback(() => {
+    playerRef.current!.stop();
+    setState("interrupted");
+  }, []);
+
+  return {
+    playChunk,
+    stop,
+    audioState: state,
+    // stop: () => {
+    //   playerRef.current!.stop();
+    //   setState("interrupted");
+    // },
+  };
 }
