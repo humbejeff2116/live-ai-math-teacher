@@ -1,3 +1,9 @@
+import type { EquationStep } from "./types";
+import type { TeacherSignal } from "./teacherState"
+
+
+export type ReexplanStyle = "simpler" | "visual" | "example";
+
 export type ClientToServerMessage =
   | {
       type: "user_message";
@@ -8,11 +14,39 @@ export type ClientToServerMessage =
   | {
       type: "close";
     }
-  | { 
-      type: "user_interrupt" 
+  | {
+      type: "user_interrupt";
+    }
+  | {
+      type: "resume_request";
+      payload: {
+        studentUtterance: string;
+        lastKnownStepIndex: number | null;
+      };
+    }
+  | {
+      type: "reexplain_step";
+      payload: {
+        stepId: string;
+        style?: ReexplanStyle;
+      };
+    }
+  | {
+      type: "select_step_nl"; //natural language step selection e.g Explain step two again, Go back to the simplification step, That last equation confused me
+      payload: {
+        text: string;
+      };
+    }
+  | {
+      type: "confusion_signal";
+      payload: {
+        text: string;
+        source: "voice" | "text";
+      };
     };
 
 export type ServerToClientMessage =
+  | TeacherSignal
   | {
       type: "ai_audio_chunk";
       payload: {
@@ -28,11 +62,7 @@ export type ServerToClientMessage =
     }
   | {
       type: "equation_step";
-      payload: {
-        id: string;
-        description: string;
-        equation: string;
-      };
+      payload: EquationStep;
     }
   | {
       type: "ai_message";
@@ -41,5 +71,26 @@ export type ServerToClientMessage =
       };
     }
   | {
-    type: "ai_interrupted"
-  }
+      type: "ai_interrupted";
+    }
+  | {
+      type: "ai_resumed";
+      payload: {
+        resumeFromStepIndex: number;
+      };
+    }
+  | {
+      type: "step_audio_start";
+      payload: {
+        stepId: string;
+        index: number;
+      };
+    }
+  | {
+      type: "ai_reexplained";
+      payload: { reexplainedStepIndex: number };
+    }
+  | {
+      type: "ai_confusion_handled";
+      payload: { confusionHandledStepIndex: number };
+    };
