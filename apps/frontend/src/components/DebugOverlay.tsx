@@ -115,9 +115,11 @@ export function DebugOverlay() {
               <p>
                 <strong>📐 Last Equation Step</strong>
               </p>
-              <p>Index: {state.lastEquationStep.id}</p>
-              <p>Type: {state.lastEquationStep.equation}</p>
-              <p style={{ opacity: 0.8 }}>{state.lastEquationStep.description}</p>
+              <p>Index: {state.lastEquationStep.index + 1}</p>
+              <p>Type: {state.lastEquationStep.type}</p>
+              <p style={{ opacity: 0.8 }}>{state.lastEquationStep.type}</p>
+              <p>📘 Active Step: {state.activeStepId ?? "None"}</p>
+              <p>🧠 Confusion Detected: {state.confusionCount ?? 0}</p>
             </>
           )}
         </>
