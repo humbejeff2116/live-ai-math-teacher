@@ -14,19 +14,10 @@ import { GeminiStreamingClient } from "../streaming/GeminiStreamingClient";
 import { AudioClock } from "./AudioClock";
 import { StepAudioTracker } from "./StepAudioTracker";
 
-
-/* ----------------------------------------
- * Resume context
- * ------------------------------------- */
-
 type ResumeContext = {
   lastCompletedStep?: EquationStep;
   fullExplanationSoFar: string;
 };
-
-/* ----------------------------------------
- * GeminiLiveSession
- * ------------------------------------- */
 
 export class GeminiLiveSession {
   private streamingClient: GeminiStreamingClient;
@@ -87,10 +78,6 @@ export class GeminiLiveSession {
     );
   }
 
-  /* ----------------------------------------
-   * Transport helpers
-   * ------------------------------------- */
-
   private send(msg: ServerToClientMessage) {
     this.ws.send(JSON.stringify(msg));
   }
@@ -100,10 +87,6 @@ export class GeminiLiveSession {
     if (signal) this.send(signal);
   }
 
-  /* ----------------------------------------
-   * Public API
-   * ------------------------------------- */
-
   async handleUserMessage(text: string, resume = false) {
     this.interrupt();
 
@@ -112,6 +95,26 @@ export class GeminiLiveSession {
     const prompt = resume
       ? buildResumePrompt(text, this.resumeContext.lastCompletedStep)
       : buildFreshPrompt(text);
+
+    await this.streamExplanation(prompt);
+  }
+
+  async resumeFromStep(stepId: string) {
+    const step = this.stepExtractor.getSteps().find((s) => s.id === stepId);
+
+    if (!step) return;
+
+    this.interrupt();
+
+    const prompt = `
+    Resume explaining from THIS step only.
+
+    Step index: ${step.index}
+    Step text:
+    ${step.text}
+
+    Do not repeat earlier steps.
+    `.trim();
 
     await this.streamExplanation(prompt);
   }
@@ -177,6 +180,11 @@ export class GeminiLiveSession {
     Equation: ${step.equation}
     `.trim();
 
+    this.setState("re-explaining", {
+      type: "teacher_reexplaining",
+      stepIndex: step.index,
+    });
+
     await this.streamExplanation(prompt);
 
     this.send({
@@ -227,10 +235,6 @@ export class GeminiLiveSession {
     this.audioClient.close();
   }
 
-  /* ----------------------------------------
-   * Streaming core
-   * ------------------------------------- */
-
   private async streamExplanation(prompt: string) {
     this.abortController = new AbortController();
     this.aborted = false;
@@ -270,11 +274,6 @@ export class GeminiLiveSession {
           this.currentSpokenStepId = step.id;
 
           this.send({ type: "equation_step", payload: step });
-          this.send({
-            type: "step_audio_start",
-            payload: { stepId: step.id, index: step.index },
-          });
-
           // 🔊 Step-aware audio
           await this.audioClient.speakStep(step.id, step.text);
         }
