@@ -1,19 +1,24 @@
 import type { EquationStep } from "@shared/types";
 import { createContext, useContext } from "react";
 
+export type StepAudioMarker = {
+  stepId: string;
+  atMs: number;
+};
+
 export type DebugState = {
-  connected: boolean;
-  lastTranscript?: string;
-  aiMessageCount: number;
   lastLatencyMs?: number;
   sessionStartedAt?: number;
+  reexplainedStepIndex?: number;
+  confusionHandledStepIndex?: number;
+  connected: boolean;
+  aiMessageCount: number;
   interruptedCount: number;
   isReconnecting: boolean;
   lastEquationStep?: EquationStep;
-  activeStepId?: string;
+  // stepAudioRanges: StepAudioRange[];
+  // activeStepId?: string;
   confusionCount?: number;
-  reexplainedStepIndex?: number;
-  confusionHandledStepIndex?: number;
 };
 
 export const DebugContext = createContext<{
