@@ -1,3 +1,4 @@
+import { useMemo } from "react";
 import type { WaveformPoint } from "../audio/audioTypes";
 import type { StepAudioRange } from "@shared/types";
 
@@ -6,6 +7,7 @@ type Props = {
   stepRanges: StepAudioRange[];
   durationMs: number;
   currentTimeMs: number;
+  animatedStepId: string | null;
   onHoverTime?: (ms: number | null) => void;
   onSeek?: (ms: number) => void;
 };
@@ -15,9 +17,26 @@ export function Waveform({
   stepRanges,
   durationMs,
   currentTimeMs,
+  animatedStepId,
   onHoverTime,
   onSeek,
 }: Props) {
+  const animatedRange = useMemo(() => {
+    if (!animatedStepId) return null;
+    return stepRanges.find((r) => r.stepId === animatedStepId) ?? null;
+  }, [animatedStepId, stepRanges]);
+
+  const leftPct =
+    animatedRange && durationMs > 0
+      ? (animatedRange.startMs / durationMs) * 100
+      : 0;
+
+  const rightPct =
+    animatedRange && durationMs > 0
+      ? ((animatedRange.endMs ?? durationMs) / durationMs) * 100
+      : 0;
+
+  const widthPct = Math.max(0, rightPct - leftPct);
   // Calculate the percentage of the audio played
   const progressPercent =
     durationMs > 0 ? (currentTimeMs / durationMs) * 100 : 0;
@@ -49,6 +68,22 @@ export function Waveform({
         onSeek?.(seekMs);
       }}
     >
+      {animatedRange && (
+        <div
+          style={{
+            position: "absolute",
+            left: `${leftPct}%`,
+            width: `${widthPct}%`,
+            top: 0,
+            bottom: 0,
+            borderRadius: 8,
+            background: "rgba(99, 102, 241, 0.12)",
+            boxShadow: "0 0 0 1px rgba(99, 102, 241, 0.25) inset",
+            pointerEvents: "none",
+            animation: "pulseGlow 1.2s ease-in-out infinite",
+          }}
+        />
+      )}
       {/* Playhead Indicator */}
       <div
         style={{

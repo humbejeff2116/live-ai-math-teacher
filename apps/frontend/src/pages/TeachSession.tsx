@@ -58,6 +58,7 @@ export function TeachingSession() {
     equationSteps
   );
   const activeStepId = stepTimeline.getActiveStep(currentTimeMs);
+  const animatedStepId = hoverStepId ?? activeStepId ?? null;
 
 
   return (
@@ -71,6 +72,7 @@ export function TeachingSession() {
             stepRanges={stepTimeline?.getRanges() || []}
             durationMs={stepTimeline?.getTotalDurationMs() || 0}
             currentTimeMs={currentTimeMs}
+            animatedStepId={animatedStepId}
             onHoverTime={setHoverMs}
             onSeek={handleWaveformSeek}
           />
@@ -119,6 +121,7 @@ export function TeachingSession() {
             onReExplain={reExplainStep}
             previewStepId={previewStepId}
             hoverStepId={hoverStepId}
+            animatedStepId={animatedStepId}
           />
         )}
       </div>

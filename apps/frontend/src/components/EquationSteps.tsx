@@ -6,6 +6,7 @@ type EquationStepsProps = {
   activeStepId?: string;
   previewStepId?: string;
   hoverStepId: string | null;
+  animatedStepId: string | null;
   onReExplain: (id: string, style?: ReexplanStyle) => void;
 };
 
@@ -14,6 +15,7 @@ export function EquationSteps({
   activeStepId,
   previewStepId,
   hoverStepId,
+  animatedStepId,
   onReExplain,
 }: EquationStepsProps) {
 
@@ -33,50 +35,74 @@ export function EquationSteps({
         const isActive = step.id === activeStepId;
         const isPreview = step.id === previewStepId && !isActive;
         const isHovered = step.id === hoverStepId;
+        const isAnimated = step.id === animatedStepId;
+
         return (
-          <div
-            key={step.id}
-            id={`step-${step.id}`}
-            // className={cn(
-            //   "equation-step",
-            //   isActive && "equation-step--active",
-            //   !isActive && isHovered && "equation-step--hover"
-            // )}
+          <>
+            <div
+              key={step.id}
+              id={`step-${step.id}`}
+              // className={cn(
+              //   "equation-step",
+              //   isActive && "equation-step--active",
+              //   !isActive && isHovered && "equation-step--hover"
+              // )}
 
-            className={`equation-step 
-              ${isActive && "equation-step--active"} 
-              ${!isActive && isHovered && "equation-step--hover"}
-            `}
-            style={{
-              padding: 8,
-              // marginTop: 8,
-              // marginBottom: "6px",
-              borderLeft: isActive
-                ? "4px solid #22c55e"
-                : isPreview
-                ? "4px solid #60a5fa"
-                : "4px solid transparent",
-              background: isActive
-                ? "#ecfdf5"
-                : isPreview
-                ? "#eff6ff"
-                : "transparent",
-              borderRadius: 6,
-            }}
-          >
-            <strong>Step {step.index + 1}</strong>
-            <div style={{ fontSize: 16, marginTop: 4 }}>{step.equation}</div>
-            <div style={{ opacity: 0.8 }}>{step.text}</div>
+              // className={`equation-step
+              //   ${isActive && "equation-step--active"}
+              //   ${!isActive && isHovered && "equation-step--hover"}
+              // `}
 
-            <div style={{ marginTop: 6 }}>
-              <button onClick={() => onReExplain(step.id, "simpler")}>
-                Explain again
-              </button>
-              <button onClick={() => onReExplain(step.id, "example")}>
-                With example
-              </button>
+              style={{
+                padding: 10,
+                borderRadius: 10,
+                borderLeft: isActive
+                  ? "4px solid #22c55e"
+                  : isPreview
+                  ? "4px solid #60a5fa"
+                  : isHovered
+                  ? "1px dashed rgba(99,102,241,0.35)"
+                  : "4px solid transparent",
+                background: isActive
+                  ? "rgba(99,102,241,0.12)"
+                  : isPreview
+                  ? "#eff6ff"
+                  : isHovered
+                  ? "rgba(99,102,241,0.06)"
+                  : "transparent",
+                animation: isAnimated
+                  ? "pulseGlow 1.2s ease-in-out infinite"
+                  : undefined,
+                transition: "background 120ms ease, border-color 120ms ease",
+              }}
+            >
+              <strong>Step {step.index + 1}</strong>
+              <div style={{ fontSize: 16, marginTop: 4 }}>{step.equation}</div>
+              <div style={{ opacity: 0.8 }}>{step.text}</div>
+
+              <div style={{ marginTop: 6 }}>
+                <button onClick={() => onReExplain(step.id, "simpler")}>
+                  Explain again
+                </button>
+                <button onClick={() => onReExplain(step.id, "example")}>
+                  With example
+                </button>
+              </div>
             </div>
-          </div>
+            {isAnimated && (
+              <span
+                style={{
+                  display: "inline-block",
+                  width: 8,
+                  height: 8,
+                  borderRadius: 999,
+                  background: "#6366f1",
+                  marginRight: 8,
+                  animation: "pulseGlow 1.2s ease-in-out infinite",
+                }}
+              />
+            )}
+          </>
         );
       })}
     </div>
