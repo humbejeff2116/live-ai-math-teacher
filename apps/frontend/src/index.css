@@ -104,3 +104,27 @@ button:focus-visible {
     filter: saturate(1);
   }
 }
+
+@keyframes shimmerSweep {
+  0% {
+    transform: translateX(-120%);
+    opacity: 0.0;
+  }
+
+  15% {
+    opacity: 0.35;
+  }
+
+  50% {
+    opacity: 0.45;
+  }
+
+  85% {
+    opacity: 0.35;
+  }
+
+  100% {
+    transform: translateX(120%);
+    opacity: 0.0;
+  }
+}

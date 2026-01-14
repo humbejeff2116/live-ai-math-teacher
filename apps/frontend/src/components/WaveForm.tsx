@@ -77,12 +77,28 @@ export function Waveform({
             top: 0,
             bottom: 0,
             borderRadius: 8,
-            background: "rgba(99, 102, 241, 0.12)",
+            background: "rgba(99, 102, 241, 0.10)",
             boxShadow: "0 0 0 1px rgba(99, 102, 241, 0.25) inset",
             pointerEvents: "none",
+            overflow: "hidden", // ✅ required for shimmer clipping
             animation: "pulseGlow 1.2s ease-in-out infinite",
+            zIndex: 2,
           }}
-        />
+        >
+          {/* Shimmer sweep */}
+          <div
+            style={{
+              position: "absolute",
+              top: 0,
+              bottom: 0,
+              width: "35%",
+              background:
+                "linear-gradient(90deg, transparent, rgba(255,255,255,0.45), transparent)",
+              filter: "blur(1px)",
+              animation: "shimmerSweep 1.4s ease-in-out infinite",
+            }}
+          />
+        </div>
       )}
       {/* Playhead Indicator */}
       <div
@@ -113,14 +129,12 @@ export function Waveform({
             style={{
               flex: 1,
               height: `${p.amp * 100}%`,
-              // Logic:
-              // 1. If it's in the past: use full color
-              // 2. If it's in the future: use lower opacity
-              // 3. If it's a "Step": use Indigo, else Green
               background: activeRange ? "#6366f1" : "#4ade80",
               opacity: isPlayed ? 1 : 0.3,
               borderRadius: "1px",
               transition: "opacity 0.2s ease",
+              position: "relative",
+              zIndex: 3,
             }}
           />
         );
