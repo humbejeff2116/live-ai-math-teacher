@@ -1,41 +1,56 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { LiveAudioPlayer } from "./liveAudioPlayer";
-import type { AudioPlaybackState } from "./audioTypes";
+import type { AudioPlaybackState, WaveformPoint } from "./audioTypes";
 
 export function useLiveAudio() {
-  const [state, setState] = useState<AudioPlaybackState>("idle");
+  const [audioState, setAudioState] = useState<AudioPlaybackState>("idle");
+  const [waveform, setWaveform] = useState<WaveformPoint[]>([]);
+  const [currentTimeMs, setCurrentTimeMs] = useState(0);
+
   const playerRef = useRef<LiveAudioPlayer | null>(null);
 
   useEffect(() => {
-    if (!playerRef.current) {
-      playerRef.current = new LiveAudioPlayer(
-        () => setState("playing"),
-        () => setState("idle")
-      );
-    }
+    playerRef.current = new LiveAudioPlayer(
+      () => setAudioState("playing"),
+      () => setAudioState("idle")
+    );
+
+    let raf: number;
+    const tick = () => {
+      if (playerRef.current) {
+        setCurrentTimeMs(playerRef.current.getCurrentTimeMs());
+      }
+      raf = requestAnimationFrame(tick);
+    };
+    raf = requestAnimationFrame(tick);
+
     return () => {
+      cancelAnimationFrame(raf);
+      playerRef.current?.stop();
       playerRef.current = null;
     };
   }, []);
 
-  // Wrap in useCallback
   const playChunk = useCallback((base64: string) => {
-    playerRef.current?.enqueueChunk(base64);
+    const player = playerRef.current;
+    if (!player) return;
+
+    player.enqueueChunk(base64);
+    setWaveform([...player.getWaveform()]);
   }, []);
 
-  // Wrap in useCallback
-  const stop = useCallback(() => {
-    playerRef.current!.stop();
-    setState("interrupted");
+  const interrupt = useCallback(() => {
+    playerRef.current?.stop();
+    setAudioState("interrupted");
   }, []);
 
   return {
     playChunk,
-    stop,
-    audioState: state,
-    // stop: () => {
-    //   playerRef.current!.stop();
-    //   setState("interrupted");
-    // },
+    interrupt,
+    audioState,
+    waveform,
+    currentTimeMs,
   };
 }
+
+
