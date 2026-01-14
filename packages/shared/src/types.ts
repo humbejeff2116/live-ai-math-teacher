@@ -11,3 +11,10 @@ export type EquationStep = {
   equation: string;
 };
 
+export type StepAudioRange = {
+  stepId: string;
+  startMs: number;
+  endMs?: number;
+};
+
+export type ReexplanStyle = "simpler" | "visual" | "example";

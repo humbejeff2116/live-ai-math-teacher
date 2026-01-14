@@ -1,8 +1,8 @@
-import type { EquationStep } from "./types";
-import type { TeacherSignal } from "./teacherState"
+import type { EquationStep, ReexplanStyle } from "./types";
+import type { TeacherSignal } from "./teacherState";
 
 
-export type ReexplanStyle = "simpler" | "visual" | "example";
+export type ResumeFromStepSource = "waveform";
 
 export type ClientToServerMessage =
   | {
@@ -42,6 +42,13 @@ export type ClientToServerMessage =
       payload: {
         text: string;
         source: "voice" | "text";
+      };
+    }
+  | {
+      type: "resume_from_step";
+      payload: {
+        stepId: string;
+        source: ResumeFromStepSource;
       };
     };
 
@@ -83,7 +90,14 @@ export type ServerToClientMessage =
       type: "step_audio_start";
       payload: {
         stepId: string;
-        index: number;
+        atMs: number;
+      };
+    }
+  | {
+      type: "step_audio_end";
+      payload: {
+        stepId: string;
+        atMs: number;
       };
     }
   | {
