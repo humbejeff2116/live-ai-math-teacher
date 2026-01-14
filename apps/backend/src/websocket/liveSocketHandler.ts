@@ -21,25 +21,24 @@ export function liveSocketHandler(ws: WebSocket) {
       case "resume_request":
         session.resumeFromInterruption({
           studentUtterance: msg.payload.studentUtterance,
-          clientStepIndex: msg.payload.lastKnownStepIndex
+          clientStepIndex: msg.payload.lastKnownStepIndex,
         });
         break;
 
-       case "reexplain_step": 
-        session.reExplainStep(
-          msg.payload.stepId,
-          msg.payload.style
-        );
+      case "reexplain_step":
+        session.reExplainStep(msg.payload.stepId, msg.payload.style);
         break;
 
       case "select_step_nl":
-        session.handleNaturalLanguageStepSelection(
-          msg.payload.text
-        );
+        session.handleNaturalLanguageStepSelection(msg.payload.text);
         break;
 
       case "confusion_signal":
         session.handleConfusion(msg.payload.text);
+        break;
+
+      case "resume_from_step":
+        session.resumeFromStep(msg.payload.stepId);
         break;
     }
   });
