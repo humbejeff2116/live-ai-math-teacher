@@ -19,6 +19,7 @@ export function useWaveformStepPreview(timeline: AudioStepTimeline, equationStep
     equationSteps: EquationStep[]
   ) => {
     if (hoverMs == null) {
+      setHoverStepId(null);
       setHoverStep(null);
       return;
     }

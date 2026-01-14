@@ -53,12 +53,15 @@ export function TeachingSession() {
   }, setIsListening);
 
   const stepTimeline = getStepTimeline();
-  const { previewStepId, hoverStep, hoverStepId, setHoverMs } = useWaveformStepPreview(
+  const { previewStepId, hoverStep, hoverStepId, hoverMs, setHoverMs } = useWaveformStepPreview(
     stepTimeline,
     equationSteps
   );
   const activeStepId = stepTimeline.getActiveStep(currentTimeMs);
   const animatedStepId = hoverStepId ?? activeStepId ?? null;
+  const hoverLabel = hoverStep
+    ? `Step ${hoverStep.index + 1} \u2013 ${hoverStep.type}`
+    : null;
 
 
   return (
@@ -73,27 +76,11 @@ export function TeachingSession() {
             durationMs={stepTimeline?.getTotalDurationMs() || 0}
             currentTimeMs={currentTimeMs}
             animatedStepId={animatedStepId}
+            hoverLabel={hoverLabel}
+            hoverMs={hoverMs}
             onHoverTime={setHoverMs}
             onSeek={handleWaveformSeek}
           />
-          {hoverStep && (
-            <div
-              style={{
-                marginTop: 6,
-                padding: "6px 10px",
-                fontSize: 12,
-                background: "rgba(0,0,0,0.75)",
-                color: "white",
-                borderRadius: 6,
-                width: "fit-content",
-                pointerEvents: "none",
-              }}
-            >
-              Step {hoverStep.index + 1}
-              {hoverStep.type ? ` – ${hoverStep.type}` : ""}
-              <div style={{ opacity: 0.8 }}>{hoverStep.text}</div>
-            </div>
-          )}
         </>
       )}
       <p>

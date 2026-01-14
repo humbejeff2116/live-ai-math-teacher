@@ -33,7 +33,6 @@ export class GeminiLiveAudioClient {
       if (!this.active) return;
 
       const msg = JSON.parse(data.toString());
-      //TODO... should this be ai_audio_chunk?
       if (msg.type === "audio_chunk") {
         onAudioChunk(Buffer.from(msg.payload, "base64"));
       }

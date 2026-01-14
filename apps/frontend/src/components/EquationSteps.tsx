@@ -34,7 +34,7 @@ export function EquationSteps({
       {steps.map((step) => {
         const isActive = step.id === activeStepId;
         const isPreview = step.id === previewStepId && !isActive;
-        const isHovered = step.id === hoverStepId;
+        const isHovered = step.id === hoverStepId && !isActive;
         const isAnimated = step.id === animatedStepId;
 
         return (

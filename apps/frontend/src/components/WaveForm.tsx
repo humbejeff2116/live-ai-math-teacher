@@ -8,6 +8,8 @@ type Props = {
   durationMs: number;
   currentTimeMs: number;
   animatedStepId: string | null;
+  hoverLabel?: string | null;
+  hoverMs?: number | null;
   onHoverTime?: (ms: number | null) => void;
   onSeek?: (ms: number) => void;
 };
@@ -18,6 +20,8 @@ export function Waveform({
   durationMs,
   currentTimeMs,
   animatedStepId,
+  hoverLabel,
+  hoverMs,
   onHoverTime,
   onSeek,
 }: Props) {
@@ -41,6 +45,11 @@ export function Waveform({
   const progressPercent =
     durationMs > 0 ? (currentTimeMs / durationMs) * 100 : 0;
 
+  const hoverPercent =
+    hoverMs != null && durationMs > 0
+      ? Math.min(100, Math.max(0, (hoverMs / durationMs) * 100))
+      : null;
+
   return (
     <div
       style={{
@@ -59,7 +68,8 @@ export function Waveform({
       onMouseMove={(e) => {
         const rect = e.currentTarget.getBoundingClientRect();
         const ratio = (e.clientX - rect.left) / rect.width;
-        onHoverTime?.(Math.min(durationMs, Math.max(0, ratio * durationMs)));
+        const clampedRatio = Math.min(1, Math.max(0, ratio));
+        onHoverTime?.(Math.min(durationMs, Math.max(0, clampedRatio * durationMs)));
       }}
       onClick={(e) => {
         const rect = e.currentTarget.getBoundingClientRect();
@@ -87,6 +97,7 @@ export function Waveform({
         >
           {/* Shimmer sweep */}
           <div
+            key={animatedStepId} // restart shimmer on step change
             style={{
               position: "absolute",
               top: 0,
@@ -98,6 +109,26 @@ export function Waveform({
               animation: "shimmerSweep 1.4s ease-in-out infinite",
             }}
           />
+        </div>
+      )}
+      {hoverLabel && hoverPercent != null && (
+        <div
+          style={{
+            position: "absolute",
+            left: `${hoverPercent}%`,
+            top: 0,
+            transform: "translate(-50%, -110%)",
+            padding: "4px 8px",
+            fontSize: 12,
+            background: "rgba(0,0,0,0.8)",
+            color: "white",
+            borderRadius: 6,
+            whiteSpace: "nowrap",
+            pointerEvents: "none",
+            zIndex: 20,
+          }}
+        >
+          {hoverLabel}
         </div>
       )}
       {/* Playhead Indicator */}

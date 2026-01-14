@@ -192,7 +192,6 @@ export function useHandleMessage(
         setDebugState((s) => ({
           ...s,
           interruptedCount: s.interruptedCount + 1,
-          stepAudioMarkers: [], // reset timeline
         }));
       }
 

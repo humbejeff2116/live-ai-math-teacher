@@ -50,7 +50,7 @@ export type ClientToServerMessage =
         stepId: string;
         source: ResumeFromStepSource;
       };
-    };
+    }
 
 export type ServerToClientMessage =
   | TeacherSignal
