@@ -32,6 +32,8 @@ export function DebugOverlay() {
     }
   }, [state.connected, state.isReconnecting, state.sessionStartedAt]);
 
+  // const activeStepId = stepTimeline.getActiveStep(currentTimeMs);
+
   if (!state.sessionStartedAt) return null;
 
   return (
@@ -118,7 +120,7 @@ export function DebugOverlay() {
               <p>Index: {state.lastEquationStep.index + 1}</p>
               <p>Type: {state.lastEquationStep.type}</p>
               <p style={{ opacity: 0.8 }}>{state.lastEquationStep.type}</p>
-              <p>📘 Active Step: {state.activeStepId ?? "None"}</p>
+              {/* <p>📘 Active Step: {state.activeStepId ?? "None"}</p> */}
               <p>🧠 Confusion Detected: {state.confusionCount ?? 0}</p>
             </>
           )}
