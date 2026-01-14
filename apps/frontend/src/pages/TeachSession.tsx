@@ -4,11 +4,26 @@ import { useSpeechInput } from "../speech/useSpeechInput";
 import { VoiceInputButton } from "../components/VoiceInputButton";
 import { EquationSteps } from "../components/EquationSteps";
 import { useLiveAudio } from "../audio/useLiveAudio";
-import { useDebugState } from "../state/debugState";
+import { Waveform } from "../components/WaveForm";
+import type { TeacherState } from "@shared/types";
+import { useWaveformStepPreview } from "../session/useWaveformStepPreview";
+
+
+const TEACHER_LABEL: Record<TeacherState, string> = {
+  idle: "Idle",
+  thinking: "Thinking",
+  explaining: "Explaining",
+  "re-explaining": "Re-explaining",
+  interrupted: "Interrupted",
+  waiting: "Waiting",
+};
 
 export function TeachingSession() {
   const [input, setInput] = useState("");
   const [isListening, setIsListening] = useState(false);
+  // const [hoverTimeMs, setHoverTimeMs] = useState<number | null>(null);
+  // const [hoverStep, setHoverStep] = useState<EquationStep | null>(null);
+
   const {
     // messages,
     streamingText,
@@ -17,38 +32,68 @@ export function TeachingSession() {
     handleStudentSpeechFinal,
     reExplainStep,
     teacherState,
+    handleWaveformSeek,
+    getStepTimeline,
   } = useLiveSession();
-  const { audioState } = useLiveAudio();
-  const { startListening } = useSpeechInput((text) => {
+
+  const { 
+    audioState, 
+    waveform, 
+    currentTimeMs 
+  } = useLiveAudio();
+
+  const { 
+    startListening 
+  } = useSpeechInput((text) => {
     if (isListening) {
       handleStudentSpeechFinal(text);
     } else {
       sendUserMessage(text);
     }
   }, setIsListening);
-  const { state: debugState } = useDebugState();
+
+  const stepTimeline = getStepTimeline();
+  const { previewStepId, hoverStep, hoverStepId, setHoverMs } = useWaveformStepPreview(
+    stepTimeline,
+    equationSteps
+  );
+  const activeStepId = stepTimeline.getActiveStep(currentTimeMs);
+
 
   return (
     <div style={{ padding: 24 }}>
       <h2>Live AI Math Teacher</h2>
-
-      {/* <p style={{ opacity: 0.7 }}>
-        {isListening
-          ? "🎧 Listening…"
-          : streamingText
-          ? "🧠 Explaining…"
-          : null}
-      </p> */}
-
       {audioState === "playing" && (
-        <p style={{ opacity: 0.7 }}>🔊 Teacher is speaking…</p>
+        <>
+          <p style={{ opacity: 0.7 }}>🔊 Teacher is speaking…</p>
+          <Waveform
+            waveform={waveform}
+            stepRanges={stepTimeline?.getRanges() || []}
+            durationMs={stepTimeline?.getTotalDurationMs() || 0}
+            currentTimeMs={currentTimeMs}
+            onHoverTime={setHoverMs}
+            onSeek={handleWaveformSeek}
+          />
+          {hoverStep && (
+            <div
+              style={{
+                marginTop: 6,
+                padding: "6px 10px",
+                fontSize: 12,
+                background: "rgba(0,0,0,0.75)",
+                color: "white",
+                borderRadius: 6,
+                width: "fit-content",
+                pointerEvents: "none",
+              }}
+            >
+              Step {hoverStep.index + 1}
+              {hoverStep.type ? ` – ${hoverStep.type}` : ""}
+              <div style={{ opacity: 0.8 }}>{hoverStep.text}</div>
+            </div>
+          )}
+        </>
       )}
-
-      {/* {audioState === "interrupted" && (
-        <p style={{ opacity: 0.6 }}>⛔ Interrupted</p>
-      )} */}
-
-      {/* TODO... fix this: Cannot find name 'TEACHER_LABEL' */}
       <p>
         🧠 Teacher: <strong>{TEACHER_LABEL[teacherState]}</strong>
       </p>
@@ -70,13 +115,12 @@ export function TeachingSession() {
         {equationSteps && (
           <EquationSteps
             steps={equationSteps}
-            activeStepId={debugState.activeStepId}
+            activeStepId={activeStepId}
             onReExplain={reExplainStep}
+            previewStepId={previewStepId}
+            hoverStepId={hoverStepId}
           />
         )}
-        {/* {messages.map((msg, i) => (
-          <p key={i}>{msg}</p>
-        ))} */}
       </div>
 
       <div style={{ marginBottom: 12 }}>
