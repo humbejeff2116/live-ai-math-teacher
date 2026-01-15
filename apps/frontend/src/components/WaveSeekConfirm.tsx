@@ -1,4 +1,4 @@
-import { useEffect } from "react";
+import { useEffect, useRef } from "react";
 import type { EquationStep } from "@shared/types";
 
 type Props = {
@@ -19,6 +19,15 @@ export function WaveSeekConfirm({
   onConfirm,
   onCancel,
 }: Props) {
+  const confirmButtonRef = useRef<HTMLButtonElement | null>(null);
+
+  useEffect(() => {
+    const frame = window.requestAnimationFrame(() => {
+      confirmButtonRef.current?.focus();
+    });
+    return () => window.cancelAnimationFrame(frame);
+  }, []);
+
   useEffect(() => {
     const handleKeyDown = (event: KeyboardEvent) => {
       const active = document.activeElement;
@@ -64,7 +73,9 @@ export function WaveSeekConfirm({
         {getPreview(step.text)}
       </div>
       <div style={{ display: "flex", gap: 8 }}>
-        <button onClick={onConfirm}>Resume here</button>
+        <button ref={confirmButtonRef} onClick={onConfirm}>
+          Resume here
+        </button>
         <button onClick={onCancel}>Cancel</button>
       </div>
     </div>
