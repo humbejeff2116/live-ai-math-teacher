@@ -2,6 +2,15 @@ import { useEffect, useEffectEvent, useMemo, useRef, useState } from "react";
 import type { AudioStepTimeline } from "../audio/audioStepTimeLine";
 import type { EquationStep } from "@shared/types/src/types";
 
+
+export type PendingSeek = {
+  id: number;
+  stepId: string;
+  x: number;
+  y: number;
+  timeMs: number;
+};
+
 export function useWaveform(
   timeline: AudioStepTimeline,
   equationSteps: EquationStep[],
@@ -11,13 +20,7 @@ export function useWaveform(
   const [hoverMs, setHoverMs] = useState<number | null>(null);
   const [hoverStep, setHoverStep] = useState<EquationStep | null>(null);
   const [hoverStepId, setHoverStepId] = useState<string | null>(null);
-  const [pendingSeek, setPendingSeek] = useState<{
-    id: number;
-    stepId: string;
-    x: number;
-    y: number;
-    timeMs: number;
-  } | null>(null);
+  const [pendingSeek, setPendingSeek] = useState<PendingSeek | null>(null);
   const pendingSeekCounterRef = useRef(0);
 
   const previewStepId = useMemo(() => {

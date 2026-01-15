@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useState } from "react";
 import { useLiveSession } from "../session/useLiveSession";
 import { useSpeechInput } from "../speech/useSpeechInput";
 import { VoiceInputButton } from "../components/VoiceInputButton";
@@ -8,6 +8,7 @@ import { Waveform } from "../components/WaveForm";
 import { WaveSeekConfirm } from "../components/WaveSeekConfirm";
 import type { TeacherState } from "@shared/types";
 import { useWaveform } from "../session/useWaveform";
+import { useWaveSeek } from "../session/useWaveSeek";
 
 
 const TEACHER_LABEL: Record<TeacherState, string> = {
@@ -22,12 +23,6 @@ const TEACHER_LABEL: Record<TeacherState, string> = {
 export function TeachingSession() {
   const [input, setInput] = useState("");
   const [isListening, setIsListening] = useState(false);
-  const [seekToast, setSeekToast] = useState<{
-    id: number;
-    message: string;
-  } | null>(null);
-  const seekToastTimeoutRef = useRef<number | null>(null);
-  const seekToastCounterRef = useRef(0);
 
   const {
     // messages,
@@ -60,6 +55,7 @@ export function TeachingSession() {
   }, setIsListening);
 
   const stepTimeline = getStepTimeline();
+  const activeStepId = stepTimeline.getActiveStep(currentTimeMs);
 
   const {
     previewStepId,
@@ -77,32 +73,30 @@ export function TeachingSession() {
     aiLifecycleTick
   );
 
-  const activeStepId = stepTimeline.getActiveStep(currentTimeMs);
+  const {
+    isConfirmingSeek, 
+    stepById,
+    onConfirmWaveSeek,
+    seekToastTimeoutRef,
+    seekToast,
+  } = useWaveSeek(
+    aiLifecycleTick,
+    stepTimeline,
+    pendingSeek,
+    setPendingSeek,
+    equationSteps,
+    activeStepId ?? null,
+    currentTimeMs,
+    seekWithFadeMs,
+    resumeFromStep
+  );
+
+
+
   const animatedStepId = hoverStepId ?? activeStepId ?? null;
   const hoverLabel = hoverStep
     ? `Step ${hoverStep.index + 1} \u2013 ${hoverStep.type}`
     : null;
-
-  const stepById = useMemo(() => {
-    return new Map(equationSteps.map((step) => [step.id, step]));
-  }, [equationSteps]);
-  const [isConfirmingSeek, setIsConfirmingSeek] = useState(false);
-  const confirmingSeekIdRef = useRef<number | null>(null);
-
-  useEffect(() => {
-    if (isConfirmingSeek) {
-      setIsConfirmingSeek(false);
-      confirmingSeekIdRef.current = null;
-    }
-  }, [aiLifecycleTick, isConfirmingSeek]);
-
-  useEffect(() => {
-    if (!pendingSeek) return;
-    if (isConfirmingSeek) return;
-    if (activeStepId && activeStepId === pendingSeek.stepId) {
-      setPendingSeek(null);
-    }
-  }, [activeStepId, isConfirmingSeek, pendingSeek, setPendingSeek]);
 
   useEffect(() => {
     return () => {
@@ -213,43 +207,7 @@ export function TeachingSession() {
           step={stepById.get(pendingSeek.stepId)!}
           position={{ x: pendingSeek.x, y: pendingSeek.y }}
           isConfirming={isConfirmingSeek}
-          onConfirm={() => {
-            if (isConfirmingSeek || !pendingSeek) return;
-            confirmingSeekIdRef.current = pendingSeek.id;
-            setIsConfirmingSeek(true);
-            const stepForToast = stepById.get(pendingSeek.stepId);
-            const toastId = (seekToastCounterRef.current += 1);
-            const toastMessage = stepForToast
-              ? `Resuming from Step ${stepForToast.index + 1}...`
-              : "Resuming...";
-            setSeekToast({ id: toastId, message: toastMessage });
-            if (seekToastTimeoutRef.current != null) {
-              window.clearTimeout(seekToastTimeoutRef.current);
-            }
-            seekToastTimeoutRef.current = window.setTimeout(() => {
-              setSeekToast((prev) => (prev?.id === toastId ? null : prev));
-            }, 1600);
-            setPendingSeek(null);
-
-            try {
-              const targetStepId = pendingSeek.stepId;
-              const rangeStartMs =
-                stepTimeline.getRangeForStep(targetStepId)?.startMs;
-              const targetMs = rangeStartMs ?? pendingSeek.timeMs ?? null;
-
-              if (targetMs != null) {
-                seekWithFadeMs(targetMs);
-              }
-              resumeFromStep(targetStepId);
-            } catch (error) {
-              console.error("Waveform confirm seek failed.", error);
-            } finally {
-              if (confirmingSeekIdRef.current === pendingSeek.id) {
-                setIsConfirmingSeek(false);
-                confirmingSeekIdRef.current = null;
-              }
-            }
-          }}
+          onConfirm={onConfirmWaveSeek}
           onCancel={() => setPendingSeek(null)}
         />
       )}

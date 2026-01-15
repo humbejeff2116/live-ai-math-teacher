@@ -49,9 +49,15 @@ export function useLiveAudio() {
   const seekWithFadeMs = useCallback(
     (targetMs: number, fadeOutMs = 100, fadeInMs = 150) => {
       const player = playerRef.current;
-      if (!player) return;
-      player.seekWithFadeMs(targetMs, fadeOutMs, fadeInMs);
-      setCurrentTimeMs(targetMs);
+      if (!player) return false;
+      try {
+        player.seekWithFadeMs(targetMs, fadeOutMs, fadeInMs);
+        setCurrentTimeMs(targetMs);
+        return true;
+      } catch (error) {
+        console.warn("Audio seek with fade failed.", error);
+        return false;
+      }
     },
     []
   );
