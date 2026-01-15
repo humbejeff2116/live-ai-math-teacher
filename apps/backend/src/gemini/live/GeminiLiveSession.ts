@@ -102,19 +102,34 @@ export class GeminiLiveSession {
   async resumeFromStep(stepId: string) {
     const step = this.stepExtractor.getSteps().find((s) => s.id === stepId);
 
-    if (!step) return;
+    if (!step) {
+      // Fail safely: ask student what they want
+      await this.handleUserMessage("Which step should I continue from?");
+      return;
+    }
 
     this.interrupt();
 
-    const prompt = `
-    Resume explaining from THIS step only.
+    this.setState("re-explaining", {
+      type: "teacher_reexplaining",
+      stepIndex: step.index,
+    });
 
-    Step index: ${step.index}
-    Step text:
-    ${step.text}
+      const prompt = `
+      You are a patient math teacher.
 
-    Do not repeat earlier steps.
-    `.trim();
+      The student clicked an earlier point in your explanation.
+      Re-explain starting from this step ONLY, then continue to the next step.
+      Do NOT restart from the beginning.
+
+      Step ${step.index + 1}:
+      ${step.text}
+
+      Equation:
+      ${step.equation}
+
+      Continue from here.
+      `.trim();
 
     await this.streamExplanation(prompt);
   }

@@ -13,7 +13,7 @@ export function useLiveSession() {
   const lastStepIndexRef = useRef<number | null>(null);
   const stepTimelineRef = useRef(new AudioStepTimeline());
 
-  const { messages, streamingText, equationSteps, teacherState } =
+  const { messages, streamingText, equationSteps, teacherState, aiLifecycleTick } =
     useHandleMessage(stepTimelineRef, sendTimeRef, lastStepIndexRef);
 
   // 3. Cleanup logic: Stop audio/timers when the hook unmounts
@@ -83,11 +83,7 @@ export function useLiveSession() {
     });
   }
 
-  function handleWaveformSeek(seekMs: number) {
-    const stepId = stepTimelineRef.current?.getActiveStep(seekMs);
-    if (!stepId) return;
-
-    // semantic resume, not audio seek
+  function resumeFromStep(stepId: string) {
     wsClientRef.current?.send({
       type: "resume_from_step",
       payload: {
@@ -106,7 +102,8 @@ export function useLiveSession() {
     handleStudentSpeechFinal,
     reExplainStep,
     teacherState,
-    handleWaveformSeek,
+    resumeFromStep,
+    aiLifecycleTick,
     getStepTimeline: () => stepTimelineRef.current,
   };
 }
@@ -119,6 +116,7 @@ export function useHandleMessage(
   const [messages, setMessages] = useState<string[]>([]);
   const [equationSteps, setEquationSteps] = useState<EquationStep[]>([]);
   const [streamingText, setStreamingText] = useState("");
+  const [aiLifecycleTick, setAiLifecycleTick] = useState(0);
   const { setState: setDebugState } = useDebugState();
   const bufferRef = useRef("");
   // const lastStepIndexRef = useRef<number | null>(null);
@@ -173,6 +171,7 @@ export function useHandleMessage(
 
       if (message.type === "ai_resumed") {
         setStreamingText("");
+        setAiLifecycleTick((t) => t + 1);
       }
 
       if (message.type === "equation_step" && lastStepIndexRef) {
@@ -188,6 +187,7 @@ export function useHandleMessage(
 
       if (message.type === "ai_interrupted") {
         interruptTTS();
+        setAiLifecycleTick((t) => t + 1);
 
         setDebugState((s) => ({
           ...s,
@@ -245,5 +245,6 @@ export function useHandleMessage(
     equationSteps,
     handleMessage,
     teacherState,
+    aiLifecycleTick,
   };
 }

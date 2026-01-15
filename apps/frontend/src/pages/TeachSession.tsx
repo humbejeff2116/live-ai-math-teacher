@@ -1,12 +1,13 @@
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { useLiveSession } from "../session/useLiveSession";
 import { useSpeechInput } from "../speech/useSpeechInput";
 import { VoiceInputButton } from "../components/VoiceInputButton";
 import { EquationSteps } from "../components/EquationSteps";
 import { useLiveAudio } from "../audio/useLiveAudio";
 import { Waveform } from "../components/WaveForm";
+import { WaveSeekConfirm } from "../components/WaveSeekConfirm";
 import type { TeacherState } from "@shared/types";
-import { useWaveformStepPreview } from "../session/useWaveformStepPreview";
+import { useWaveform } from "../session/useWaveformStepPreview";
 
 
 const TEACHER_LABEL: Record<TeacherState, string> = {
@@ -21,8 +22,6 @@ const TEACHER_LABEL: Record<TeacherState, string> = {
 export function TeachingSession() {
   const [input, setInput] = useState("");
   const [isListening, setIsListening] = useState(false);
-  // const [hoverTimeMs, setHoverTimeMs] = useState<number | null>(null);
-  // const [hoverStep, setHoverStep] = useState<EquationStep | null>(null);
 
   const {
     // messages,
@@ -32,7 +31,8 @@ export function TeachingSession() {
     handleStudentSpeechFinal,
     reExplainStep,
     teacherState,
-    handleWaveformSeek,
+    resumeFromStep,
+    aiLifecycleTick,
     getStepTimeline,
   } = useLiveSession();
 
@@ -53,15 +53,32 @@ export function TeachingSession() {
   }, setIsListening);
 
   const stepTimeline = getStepTimeline();
-  const { previewStepId, hoverStep, hoverStepId, hoverMs, setHoverMs } = useWaveformStepPreview(
+
+  const {
+    previewStepId,
+    hoverStep,
+    hoverStepId,
+    hoverMs,
+    pendingSeek,
+    setHoverMs,
+    setPendingSeek,
+    handleOnseekRequest,
+  } = useWaveform(
     stepTimeline,
-    equationSteps
+    equationSteps,
+    currentTimeMs,
+    aiLifecycleTick
   );
+
   const activeStepId = stepTimeline.getActiveStep(currentTimeMs);
   const animatedStepId = hoverStepId ?? activeStepId ?? null;
   const hoverLabel = hoverStep
     ? `Step ${hoverStep.index + 1} \u2013 ${hoverStep.type}`
     : null;
+
+  const stepById = useMemo(() => {
+    return new Map(equationSteps.map((step) => [step.id, step]));
+  }, [equationSteps]);
 
 
   return (
@@ -79,7 +96,7 @@ export function TeachingSession() {
             hoverLabel={hoverLabel}
             hoverMs={hoverMs}
             onHoverTime={setHoverMs}
-            onSeek={handleWaveformSeek}
+            onSeekRequest={handleOnseekRequest}
           />
         </>
       )}
@@ -109,6 +126,7 @@ export function TeachingSession() {
             previewStepId={previewStepId}
             hoverStepId={hoverStepId}
             animatedStepId={animatedStepId}
+            pendingStepId={pendingSeek?.stepId}
           />
         )}
       </div>
@@ -135,6 +153,18 @@ export function TeachingSession() {
         listening={isListening}
         handleStartListening={startListening}
       />
+
+      {pendingSeek && stepById.has(pendingSeek.stepId) && (
+        <WaveSeekConfirm
+          step={stepById.get(pendingSeek.stepId)!}
+          position={{ x: pendingSeek.x, y: pendingSeek.y }}
+          onConfirm={() => {
+            resumeFromStep(pendingSeek.stepId);
+            setPendingSeek(null);
+          }}
+          onCancel={() => setPendingSeek(null)}
+        />
+      )}
     </div>
   );
 }

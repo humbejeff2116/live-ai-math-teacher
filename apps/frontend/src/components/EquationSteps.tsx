@@ -7,6 +7,7 @@ type EquationStepsProps = {
   previewStepId?: string;
   hoverStepId: string | null;
   animatedStepId: string | null;
+  pendingStepId?: string;
   onReExplain: (id: string, style?: ReexplanStyle) => void;
 };
 
@@ -16,6 +17,7 @@ export function EquationSteps({
   previewStepId,
   hoverStepId,
   animatedStepId,
+  pendingStepId,
   onReExplain,
 }: EquationStepsProps) {
 
@@ -35,6 +37,7 @@ export function EquationSteps({
         const isActive = step.id === activeStepId;
         const isPreview = step.id === previewStepId && !isActive;
         const isHovered = step.id === hoverStepId && !isActive;
+        const isPending = step.id === pendingStepId && !isActive;
         const isAnimated = step.id === animatedStepId;
 
         return (
@@ -60,6 +63,8 @@ export function EquationSteps({
                   ? "4px solid #22c55e"
                   : isPreview
                   ? "4px solid #60a5fa"
+                  : isPending
+                  ? "2px dashed rgba(99,102,241,0.5)"
                   : isHovered
                   ? "1px dashed rgba(99,102,241,0.35)"
                   : "4px solid transparent",
@@ -67,6 +72,8 @@ export function EquationSteps({
                   ? "rgba(99,102,241,0.12)"
                   : isPreview
                   ? "#eff6ff"
+                  : isPending
+                  ? "rgba(99,102,241,0.04)"
                   : isHovered
                   ? "rgba(99,102,241,0.06)"
                   : "transparent",

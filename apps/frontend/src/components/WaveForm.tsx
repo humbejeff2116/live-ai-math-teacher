@@ -11,7 +11,11 @@ type Props = {
   hoverLabel?: string | null;
   hoverMs?: number | null;
   onHoverTime?: (ms: number | null) => void;
-  onSeek?: (ms: number) => void;
+  onSeekRequest?: (payload: {
+    ms: number;
+    clientX: number;
+    clientY: number;
+  }) => void;
 };
 
 export function Waveform({
@@ -23,7 +27,7 @@ export function Waveform({
   hoverLabel,
   hoverMs,
   onHoverTime,
-  onSeek,
+  onSeekRequest,
 }: Props) {
   const animatedRange = useMemo(() => {
     if (!animatedStepId) return null;
@@ -75,7 +79,11 @@ export function Waveform({
         const rect = e.currentTarget.getBoundingClientRect();
         const ratio = (e.clientX - rect.left) / rect.width;
         const seekMs = Math.min(durationMs, Math.max(0, ratio * durationMs));
-        onSeek?.(seekMs);
+        onSeekRequest?.({
+          ms: seekMs,
+          clientX: e.clientX,
+          clientY: e.clientY,
+        });
       }}
     >
       {animatedRange && (
