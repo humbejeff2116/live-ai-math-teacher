@@ -3,6 +3,7 @@ import type { WaveformPoint } from "./audioTypes";
 export class LiveAudioPlayer {
   private audioCtx: AudioContext;
   private analyser: AnalyserNode;
+  private gainNode: GainNode;
   private queue: AudioBuffer[] = [];
   private playing = false;
   private stopped = false;
@@ -10,6 +11,8 @@ export class LiveAudioPlayer {
   private waveform: WaveformPoint[] = [];
 
   private startTimeMs: number | null = null;
+  private seekFadeToken = 0;
+  private seekFadeTimeoutId: number | null = null;
 
   private onStart?: () => void;
   private onStop?: () => void;
@@ -19,7 +22,10 @@ export class LiveAudioPlayer {
 
     this.analyser = this.audioCtx.createAnalyser();
     this.analyser.fftSize = 256;
-    this.analyser.connect(this.audioCtx.destination);
+    this.gainNode = this.audioCtx.createGain();
+    this.gainNode.gain.value = 1;
+    this.analyser.connect(this.gainNode);
+    this.gainNode.connect(this.audioCtx.destination);
 
     this.onStart = onStart;
     this.onStop = onStop;
@@ -33,6 +39,51 @@ export class LiveAudioPlayer {
   seekToMs(targetMs: number) {
     const safeTargetMs = Math.max(0, targetMs);
     this.startTimeMs = this.audioCtx.currentTime * 1000 - safeTargetMs;
+  }
+
+  seekWithFadeMs(targetMs: number, fadeOutMs = 100, fadeInMs = 150) {
+    if (this.stopped) return;
+
+    const safeTargetMs = Math.max(0, targetMs);
+    const currentGain = this.gainNode.gain.value;
+    if (currentGain <= 0) {
+      this.seekToMs(safeTargetMs);
+      return;
+    }
+
+    this.seekFadeToken += 1;
+    const token = this.seekFadeToken;
+
+    if (this.seekFadeTimeoutId != null) {
+      window.clearTimeout(this.seekFadeTimeoutId);
+      this.seekFadeTimeoutId = null;
+    }
+
+    const now = this.audioCtx.currentTime;
+    const fadeOutSeconds = Math.max(0, fadeOutMs) / 1000;
+    const fadeInSeconds = Math.max(0, fadeInMs) / 1000;
+
+    this.gainNode.gain.cancelScheduledValues(now);
+    this.gainNode.gain.setValueAtTime(currentGain, now);
+
+    if (fadeOutSeconds === 0) {
+      this.seekToMs(safeTargetMs);
+      this.gainNode.gain.setValueAtTime(currentGain, now);
+      return;
+    }
+
+    this.gainNode.gain.linearRampToValueAtTime(0, now + fadeOutSeconds);
+    this.seekFadeTimeoutId = window.setTimeout(() => {
+      if (this.seekFadeToken !== token) return;
+      this.seekToMs(safeTargetMs);
+      const fadeStart = this.audioCtx.currentTime;
+      this.gainNode.gain.cancelScheduledValues(fadeStart);
+      this.gainNode.gain.setValueAtTime(0, fadeStart);
+      this.gainNode.gain.linearRampToValueAtTime(
+        currentGain,
+        fadeStart + fadeInSeconds
+      );
+    }, fadeOutMs);
   }
 
   async enqueueChunk(base64: string) {

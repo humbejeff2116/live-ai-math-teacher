@@ -46,7 +46,7 @@ export function TeachingSession() {
     audioState, 
     waveform, 
     currentTimeMs,
-    seekToMs,
+    seekWithFadeMs,
   } = useLiveAudio();
 
   const { 
@@ -230,7 +230,7 @@ export function TeachingSession() {
               const targetMs = rangeStartMs ?? pendingSeek.timeMs ?? null;
 
               if (targetMs != null) {
-                seekToMs(targetMs);
+                seekWithFadeMs(targetMs);
               }
               resumeFromStep(targetStepId);
             } catch (error) {
