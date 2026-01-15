@@ -20,7 +20,6 @@ export function EquationSteps({
   pendingStepId,
   onReExplain,
 }: EquationStepsProps) {
-
   useEffect(() => {
     if (!hoverStepId) return;
 
@@ -28,9 +27,16 @@ export function EquationSteps({
       .getElementById(`step-${hoverStepId}`)
       ?.scrollIntoView({ block: "nearest", behavior: "smooth" });
   }, [hoverStepId]);
-  
+
   return (
     <div style={{ marginTop: 16 }}>
+      <style>
+        {`@keyframes pendingPulse {
+          0% { background-color: rgba(99,102,241,0.04); }
+          50% { background-color: rgba(99,102,241,0.1); }
+          100% { background-color: rgba(99,102,241,0.04); }
+        }`}
+      </style>
       <h3>📐 Solution Steps</h3>
 
       {steps.map((step) => {
@@ -45,17 +51,6 @@ export function EquationSteps({
             <div
               key={step.id}
               id={`step-${step.id}`}
-              // className={cn(
-              //   "equation-step",
-              //   isActive && "equation-step--active",
-              //   !isActive && isHovered && "equation-step--hover"
-              // )}
-
-              // className={`equation-step
-              //   ${isActive && "equation-step--active"}
-              //   ${!isActive && isHovered && "equation-step--hover"}
-              // `}
-
               style={{
                 padding: 10,
                 borderRadius: 10,
@@ -77,7 +72,9 @@ export function EquationSteps({
                   : isHovered
                   ? "rgba(99,102,241,0.06)"
                   : "transparent",
-                animation: isAnimated
+                animation: isPending
+                  ? "pendingPulse 2.1s ease-in-out infinite"
+                  : isAnimated
                   ? "pulseGlow 1.2s ease-in-out infinite"
                   : undefined,
                 transition: "background 120ms ease, border-color 120ms ease",
