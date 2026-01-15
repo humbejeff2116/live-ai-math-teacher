@@ -181,6 +181,28 @@ export function TeachingSession() {
         handleStartListening={startListening}
       />
 
+      {isConfirmingSeek && (
+        <div
+          style={{
+            position: "fixed",
+            top: 44,
+            right: 12,
+            zIndex: 61,
+            padding: "4px 10px",
+            borderRadius: 999,
+            fontSize: 12,
+            background: "rgba(15, 23, 42, 0.06)",
+            color: "#0f172a",
+            border: "1px solid rgba(15, 23, 42, 0.12)",
+            boxShadow: "0 4px 12px rgba(15, 23, 42, 0.1)",
+            transition: "opacity 160ms ease",
+            pointerEvents: "none",
+          }}
+        >
+          Resuming...
+        </div>
+      )}
+
       {seekToast && (
         <div
           style={{
