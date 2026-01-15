@@ -39,6 +39,13 @@ export function useLiveAudio() {
     setWaveform([...player.getWaveform()]);
   }, []);
 
+  const seekToMs = useCallback((targetMs: number) => {
+    const player = playerRef.current;
+    if (!player) return;
+    player.seekToMs(targetMs);
+    setCurrentTimeMs(targetMs);
+  }, []);
+
   const interrupt = useCallback(() => {
     playerRef.current?.stop();
     setAudioState("interrupted");
@@ -46,6 +53,7 @@ export function useLiveAudio() {
 
   return {
     playChunk,
+    seekToMs,
     interrupt,
     audioState,
     waveform,

@@ -82,6 +82,10 @@ export class AudioStepTimeline {
     return this.ranges;
   }
 
+  getRangeForStep(stepId: string): StepAudioRange | undefined {
+    return this.ranges.find((range) => range.stepId === stepId);
+  }
+
   reset() {
     this.ranges = [];
   }

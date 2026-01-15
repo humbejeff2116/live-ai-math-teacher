@@ -7,7 +7,7 @@ import { useLiveAudio } from "../audio/useLiveAudio";
 import { Waveform } from "../components/WaveForm";
 import { WaveSeekConfirm } from "../components/WaveSeekConfirm";
 import type { TeacherState } from "@shared/types";
-import { useWaveform } from "../session/useWaveformStepPreview";
+import { useWaveform } from "../session/useWaveform";
 
 
 const TEACHER_LABEL: Record<TeacherState, string> = {
@@ -39,7 +39,8 @@ export function TeachingSession() {
   const { 
     audioState, 
     waveform, 
-    currentTimeMs 
+    currentTimeMs,
+    seekToMs,
   } = useLiveAudio();
 
   const { 
@@ -160,8 +161,16 @@ export function TeachingSession() {
           step={stepById.get(pendingSeek.stepId)!}
           position={{ x: pendingSeek.x, y: pendingSeek.y }}
           onConfirm={() => {
-            resumeFromStep(pendingSeek.stepId);
+            const targetStepId = pendingSeek.stepId;
+            const rangeStartMs =
+              stepTimeline.getRangeForStep(targetStepId)?.startMs;
+            const targetMs = rangeStartMs ?? pendingSeek.timeMs ?? null;
+
             setPendingSeek(null);
+            if (targetMs != null) {
+              seekToMs(targetMs);
+            }
+            resumeFromStep(targetStepId);
           }}
           onCancel={() => setPendingSeek(null)}
         />

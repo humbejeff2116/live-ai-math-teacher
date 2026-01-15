@@ -1,4 +1,4 @@
-import { useEffect, useRef } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import type { EquationStep } from "@shared/types";
 
 type Props = {
@@ -20,6 +20,7 @@ export function WaveSeekConfirm({
   onCancel,
 }: Props) {
   const confirmButtonRef = useRef<HTMLButtonElement | null>(null);
+  const [isConfirming, setIsConfirming] = useState(false);
 
   useEffect(() => {
     const frame = window.requestAnimationFrame(() => {
@@ -27,6 +28,17 @@ export function WaveSeekConfirm({
     });
     return () => window.cancelAnimationFrame(frame);
   }, []);
+
+  const handleConfirm = useCallback(() => {
+    if (isConfirming) return;
+    setIsConfirming(true);
+    try {
+      onConfirm();
+    } catch (error) {
+      console.error("WaveSeekConfirm confirm failed.", error);
+      setIsConfirming(false);
+    }
+  }, [isConfirming, onConfirm]);
 
   useEffect(() => {
     const handleKeyDown = (event: KeyboardEvent) => {
@@ -43,13 +55,13 @@ export function WaveSeekConfirm({
       }
       if (event.key === "Enter") {
         event.preventDefault();
-        onConfirm();
+        handleConfirm();
       }
     };
 
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [onCancel, onConfirm]);
+  }, [handleConfirm, onCancel]);
 
   return (
     <div
@@ -73,7 +85,11 @@ export function WaveSeekConfirm({
         {getPreview(step.text)}
       </div>
       <div style={{ display: "flex", gap: 8 }}>
-        <button ref={confirmButtonRef} onClick={onConfirm}>
+        <button
+          ref={confirmButtonRef}
+          onClick={handleConfirm}
+          disabled={isConfirming}
+        >
           Resume here
         </button>
         <button onClick={onCancel}>Cancel</button>

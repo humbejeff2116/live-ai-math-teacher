@@ -15,6 +15,7 @@ export function useWaveform(
     stepId: string;
     x: number;
     y: number;
+    timeMs: number;
   } | null>(null);
 
   const previewStepId = useMemo(() => {
@@ -83,6 +84,7 @@ export function useWaveform(
       stepId: clickedStepId,
       x: payload.clientX,
       y: payload.clientY,
+      timeMs: payload.ms,
     });
   };
 

@@ -30,6 +30,11 @@ export class LiveAudioPlayer {
     return this.audioCtx.currentTime * 1000 - this.startTimeMs;
   }
 
+  seekToMs(targetMs: number) {
+    const safeTargetMs = Math.max(0, targetMs);
+    this.startTimeMs = this.audioCtx.currentTime * 1000 - safeTargetMs;
+  }
+
   async enqueueChunk(base64: string) {
     if (this.stopped) return;
 
