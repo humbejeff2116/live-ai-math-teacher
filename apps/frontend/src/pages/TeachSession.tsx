@@ -22,6 +22,12 @@ const TEACHER_LABEL: Record<TeacherState, string> = {
 export function TeachingSession() {
   const [input, setInput] = useState("");
   const [isListening, setIsListening] = useState(false);
+  const [seekToast, setSeekToast] = useState<{
+    id: number;
+    message: string;
+  } | null>(null);
+  const seekToastTimeoutRef = useRef<number | null>(null);
+  const seekToastCounterRef = useRef(0);
 
   const {
     // messages,
@@ -90,6 +96,14 @@ export function TeachingSession() {
     }
   }, [aiLifecycleTick, isConfirmingSeek]);
 
+  useEffect(() => {
+    return () => {
+      if (seekToastTimeoutRef.current != null) {
+        window.clearTimeout(seekToastTimeoutRef.current);
+        seekToastTimeoutRef.current = null;
+      }
+    };
+  }, []);
 
   return (
     <div style={{ padding: 24 }}>
@@ -165,6 +179,27 @@ export function TeachingSession() {
         handleStartListening={startListening}
       />
 
+      {seekToast && (
+        <div
+          style={{
+            position: "fixed",
+            top: 12,
+            right: 12,
+            zIndex: 60,
+            padding: "6px 10px",
+            borderRadius: 999,
+            fontSize: 12,
+            background: "rgba(15, 23, 42, 0.08)",
+            color: "#0f172a",
+            border: "1px solid rgba(15, 23, 42, 0.15)",
+            boxShadow: "0 6px 16px rgba(15, 23, 42, 0.12)",
+            transition: "opacity 160ms ease",
+          }}
+        >
+          {seekToast.message}
+        </div>
+      )}
+
       {pendingSeek && stepById.has(pendingSeek.stepId) && (
         <WaveSeekConfirm
           step={stepById.get(pendingSeek.stepId)!}
@@ -174,6 +209,18 @@ export function TeachingSession() {
             if (isConfirmingSeek || !pendingSeek) return;
             confirmingSeekIdRef.current = pendingSeek.id;
             setIsConfirmingSeek(true);
+            const stepForToast = stepById.get(pendingSeek.stepId);
+            const toastId = (seekToastCounterRef.current += 1);
+            const toastMessage = stepForToast
+              ? `Resuming from Step ${stepForToast.index + 1}...`
+              : "Resuming...";
+            setSeekToast({ id: toastId, message: toastMessage });
+            if (seekToastTimeoutRef.current != null) {
+              window.clearTimeout(seekToastTimeoutRef.current);
+            }
+            seekToastTimeoutRef.current = window.setTimeout(() => {
+              setSeekToast((prev) => (prev?.id === toastId ? null : prev));
+            }, 1600);
             setPendingSeek(null);
 
             try {
