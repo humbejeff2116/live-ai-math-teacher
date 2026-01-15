@@ -1,3 +1,4 @@
+import { useEffect } from "react";
 import type { EquationStep } from "@shared/types";
 
 type Props = {
@@ -18,6 +19,29 @@ export function WaveSeekConfirm({
   onConfirm,
   onCancel,
 }: Props) {
+  useEffect(() => {
+    const handleKeyDown = (event: KeyboardEvent) => {
+      const active = document.activeElement;
+      if (active instanceof HTMLElement && active.isContentEditable) return;
+      if (active instanceof HTMLInputElement) return;
+      if (active instanceof HTMLTextAreaElement) return;
+      if (active instanceof HTMLSelectElement) return;
+
+      if (event.key === "Escape") {
+        event.preventDefault();
+        onCancel();
+        return;
+      }
+      if (event.key === "Enter") {
+        event.preventDefault();
+        onConfirm();
+      }
+    };
+
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [onCancel, onConfirm]);
+
   return (
     <div
       style={{
