@@ -54,6 +54,22 @@ export function Waveform({
       ? Math.min(100, Math.max(0, (hoverMs / durationMs) * 100))
       : null;
 
+  const boundaryPercents = useMemo(() => {
+    if (durationMs <= 0 || stepRanges.length === 0) return [];
+    const unique = new Set<number>();
+    for (const range of stepRanges) {
+      if (range.startMs == null) continue;
+      const pct = Math.min(100, Math.max(0, (range.startMs / durationMs) * 100));
+      unique.add(Math.round(pct * 100) / 100);
+    }
+    const sorted = Array.from(unique).sort((a, b) => a - b);
+    if (sorted.length > 200) {
+      const step = Math.ceil(sorted.length / 200);
+      return sorted.filter((_, idx) => idx % step === 0);
+    }
+    return sorted;
+  }, [durationMs, stepRanges]);
+
   return (
     <div
       style={{
@@ -117,6 +133,30 @@ export function Waveform({
               animation: "shimmerSweep 1.4s ease-in-out infinite",
             }}
           />
+        </div>
+      )}
+      {boundaryPercents.length > 0 && (
+        <div
+          style={{
+            position: "absolute",
+            inset: 0,
+            pointerEvents: "none",
+            zIndex: 4,
+          }}
+        >
+          {boundaryPercents.map((pct) => (
+            <div
+              key={pct}
+              style={{
+                position: "absolute",
+                left: `${pct}%`,
+                top: 6,
+                bottom: 6,
+                width: 1,
+                background: "rgba(15, 23, 42, 0.15)",
+              }}
+            />
+          ))}
         </div>
       )}
       {hoverLabel && hoverPercent != null && (
