@@ -1,4 +1,4 @@
-import { useEffect, useEffectEvent, useMemo, useState } from "react";
+import { useEffect, useEffectEvent, useMemo, useRef, useState } from "react";
 import type { AudioStepTimeline } from "../audio/audioStepTimeLine";
 import type { EquationStep } from "@shared/types/src/types";
 
@@ -12,59 +12,67 @@ export function useWaveform(
   const [hoverStep, setHoverStep] = useState<EquationStep | null>(null);
   const [hoverStepId, setHoverStepId] = useState<string | null>(null);
   const [pendingSeek, setPendingSeek] = useState<{
+    id: number;
     stepId: string;
     x: number;
     y: number;
     timeMs: number;
   } | null>(null);
+  const pendingSeekCounterRef = useRef(0);
 
   const previewStepId = useMemo(() => {
     if (hoverMs == null) return undefined;
     return timeline.getActiveStep(hoverMs);
   }, [hoverMs, timeline]);
 
-  const handleHoverStep = useEffectEvent(
-    (
-      hoverMs: number | null,
-      timeline: AudioStepTimeline,
-      equationSteps: EquationStep[]
-    ) => {
-      if (hoverMs == null) {
-        setHoverStepId(null);
-        setHoverStep(null);
-        return;
-      }
-      const stepId = timeline.getActiveStep(hoverMs);
-      setHoverStepId(stepId ?? null);
-      if (!stepId) {
-        setHoverStep(null);
-        return;
-      }
-      const step = equationSteps.find((s) => s.id === stepId) ?? null;
-      setHoverStep(step);
+  const handleHoverStep = useEffectEvent((
+    hoverMs: number | null,
+    timeline: AudioStepTimeline,
+    equationSteps: EquationStep[]
+  ) => {
+    if (hoverMs == null) {
+      setHoverStepId(null);
+      setHoverStep(null);
+      return;
     }
-  );
+    const stepId = timeline.getActiveStep(hoverMs);
+    setHoverStepId(stepId ?? null);
+    if (!stepId) {
+      setHoverStep(null);
+      return;
+    }
+    const step = equationSteps.find((s) => s.id === stepId) ?? null;
+    setHoverStep(step);
+  });
 
   useEffect(() => {
     handleHoverStep(hoverMs, timeline, equationSteps);
   }, [hoverMs, timeline, equationSteps]);
 
+  const handleSetPendingSeek = useEffectEvent((
+    pendingSeek: {
+      id: number;
+      stepId: string;
+      x: number;
+      y: number;
+      timeMs: number;
+    } | null
+  ) => {
+    setPendingSeek(pendingSeek);
+  })
+
   useEffect(() => {
-    // Instead of setting state synchronously in the effect,
-    // you can trigger a callback or handle this logic in an event handler.
-    // If you want to "auto-cancel" pendingSeek when hoverStepId changes, use a timeout to avoid cascading renders.
     if (!pendingSeek) return;
     if (hoverStepId && hoverStepId !== pendingSeek.stepId) {
-      // Use a microtask to defer setState and avoid cascading renders
-      Promise.resolve().then(() => setPendingSeek(null));
+      handleSetPendingSeek(null);
     }
   }, [hoverStepId, pendingSeek]);
 
   useEffect(() => {
     if (pendingSeek) {
-      Promise.resolve().then(() => setPendingSeek(null));
+      handleSetPendingSeek(null);
     }
-  }, [aiLifecycleTick, pendingSeek]);
+  }, [aiLifecycleTick]);
 
   const handleOnseekRequest = (payload: {
     ms: number;
@@ -80,7 +88,9 @@ export function useWaveform(
       return;
     }
 
+    pendingSeekCounterRef.current += 1;
     setPendingSeek({
+      id: pendingSeekCounterRef.current,
       stepId: clickedStepId,
       x: payload.clientX,
       y: payload.clientY,

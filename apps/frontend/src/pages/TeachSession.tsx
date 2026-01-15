@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useLiveSession } from "../session/useLiveSession";
 import { useSpeechInput } from "../speech/useSpeechInput";
 import { VoiceInputButton } from "../components/VoiceInputButton";
@@ -80,6 +80,15 @@ export function TeachingSession() {
   const stepById = useMemo(() => {
     return new Map(equationSteps.map((step) => [step.id, step]));
   }, [equationSteps]);
+  const [isConfirmingSeek, setIsConfirmingSeek] = useState(false);
+  const confirmingSeekIdRef = useRef<number | null>(null);
+
+  useEffect(() => {
+    if (isConfirmingSeek) {
+      setIsConfirmingSeek(false);
+      confirmingSeekIdRef.current = null;
+    }
+  }, [aiLifecycleTick, isConfirmingSeek]);
 
 
   return (
@@ -160,17 +169,31 @@ export function TeachingSession() {
         <WaveSeekConfirm
           step={stepById.get(pendingSeek.stepId)!}
           position={{ x: pendingSeek.x, y: pendingSeek.y }}
+          isConfirming={isConfirmingSeek}
           onConfirm={() => {
-            const targetStepId = pendingSeek.stepId;
-            const rangeStartMs =
-              stepTimeline.getRangeForStep(targetStepId)?.startMs;
-            const targetMs = rangeStartMs ?? pendingSeek.timeMs ?? null;
-
+            if (isConfirmingSeek || !pendingSeek) return;
+            confirmingSeekIdRef.current = pendingSeek.id;
+            setIsConfirmingSeek(true);
             setPendingSeek(null);
-            if (targetMs != null) {
-              seekToMs(targetMs);
+
+            try {
+              const targetStepId = pendingSeek.stepId;
+              const rangeStartMs =
+                stepTimeline.getRangeForStep(targetStepId)?.startMs;
+              const targetMs = rangeStartMs ?? pendingSeek.timeMs ?? null;
+
+              if (targetMs != null) {
+                seekToMs(targetMs);
+              }
+              resumeFromStep(targetStepId);
+            } catch (error) {
+              console.error("Waveform confirm seek failed.", error);
+            } finally {
+              if (confirmingSeekIdRef.current === pendingSeek.id) {
+                setIsConfirmingSeek(false);
+                confirmingSeekIdRef.current = null;
+              }
             }
-            resumeFromStep(targetStepId);
           }}
           onCancel={() => setPendingSeek(null)}
         />

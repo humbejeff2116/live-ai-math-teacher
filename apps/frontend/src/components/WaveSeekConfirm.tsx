@@ -1,9 +1,10 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef } from "react";
 import type { EquationStep } from "@shared/types";
 
 type Props = {
   step: EquationStep;
   position: { x: number; y: number };
+  isConfirming?: boolean;
   onConfirm: () => void;
   onCancel: () => void;
 };
@@ -16,11 +17,11 @@ function getPreview(text: string, limit = 90) {
 export function WaveSeekConfirm({
   step,
   position,
+  isConfirming = false,
   onConfirm,
   onCancel,
 }: Props) {
   const confirmButtonRef = useRef<HTMLButtonElement | null>(null);
-  const [isConfirming, setIsConfirming] = useState(false);
 
   useEffect(() => {
     const frame = window.requestAnimationFrame(() => {
@@ -31,13 +32,7 @@ export function WaveSeekConfirm({
 
   const handleConfirm = useCallback(() => {
     if (isConfirming) return;
-    setIsConfirming(true);
-    try {
-      onConfirm();
-    } catch (error) {
-      console.error("WaveSeekConfirm confirm failed.", error);
-      setIsConfirming(false);
-    }
+    onConfirm();
   }, [isConfirming, onConfirm]);
 
   useEffect(() => {
