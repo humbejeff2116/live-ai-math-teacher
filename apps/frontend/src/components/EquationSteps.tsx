@@ -8,6 +8,7 @@ type EquationStepsProps = {
   hoverStepId: string | null;
   animatedStepId: string | null;
   pendingStepId?: string;
+  pendingStepLabel?: string;
   onReExplain: (id: string, style?: ReexplanStyle) => void;
 };
 
@@ -18,6 +19,7 @@ export function EquationSteps({
   hoverStepId,
   animatedStepId,
   pendingStepId,
+  pendingStepLabel,
   onReExplain,
 }: EquationStepsProps) {
   useEffect(() => {
@@ -54,6 +56,7 @@ export function EquationSteps({
               style={{
                 padding: 10,
                 borderRadius: 10,
+                position: "relative",
                 borderLeft: isActive
                   ? "4px solid #22c55e"
                   : isPreview
@@ -80,6 +83,26 @@ export function EquationSteps({
                 transition: "background 120ms ease, border-color 120ms ease",
               }}
             >
+              {isPending && pendingStepLabel && (
+                <div
+                  style={{
+                    position: "absolute",
+                    top: 8,
+                    right: 8,
+                    padding: "2px 8px",
+                    borderRadius: 999,
+                    fontSize: 11,
+                    background: "rgba(99,102,241,0.12)",
+                    color: "#4338ca",
+                    border: "1px solid rgba(99,102,241,0.2)",
+                    opacity: 1,
+                    transition: "opacity 160ms ease",
+                    pointerEvents: "none",
+                  }}
+                >
+                  {pendingStepLabel}
+                </div>
+              )}
               <strong>Step {step.index + 1}</strong>
               <div style={{ fontSize: 16, marginTop: 4 }}>{step.equation}</div>
               <div style={{ opacity: 0.8 }}>{step.text}</div>

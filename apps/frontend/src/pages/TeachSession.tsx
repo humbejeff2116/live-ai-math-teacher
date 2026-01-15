@@ -127,6 +127,7 @@ export function TeachingSession() {
             hoverStepId={hoverStepId}
             animatedStepId={animatedStepId}
             pendingStepId={pendingSeek?.stepId}
+            pendingStepLabel={pendingSeek ? "Resume here?" : undefined}
           />
         )}
       </div>
