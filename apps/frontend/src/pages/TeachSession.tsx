@@ -97,6 +97,14 @@ export function TeachingSession() {
   }, [aiLifecycleTick, isConfirmingSeek]);
 
   useEffect(() => {
+    if (!pendingSeek) return;
+    if (isConfirmingSeek) return;
+    if (activeStepId && activeStepId === pendingSeek.stepId) {
+      setPendingSeek(null);
+    }
+  }, [activeStepId, isConfirmingSeek, pendingSeek, setPendingSeek]);
+
+  useEffect(() => {
     return () => {
       if (seekToastTimeoutRef.current != null) {
         window.clearTimeout(seekToastTimeoutRef.current);
