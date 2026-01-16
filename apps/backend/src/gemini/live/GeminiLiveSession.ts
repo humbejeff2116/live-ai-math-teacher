@@ -340,7 +340,7 @@ export class GeminiLiveSession {
 
             this.send({ type: "equation_step", payload: step });
             // 🔊 Step-aware audio
-            // await this.audioClient.speakStep(step.id, step.text);
+            await this.audioClient.speakStep(step.id, step.text);
           }
         }
       } finally {

@@ -9,12 +9,26 @@ import { AudioStepTimeline } from "../audio/audioStepTimeLine";
 
 export function useLiveSession() {
   const sendTimeRef = useRef<number | null>(null);
-  const { wsClientRef } = useWebSocketState();
+  const { wsClientRef, subscribe } = useWebSocketState();
   const lastStepIndexRef = useRef<number | null>(null);
   const stepTimelineRef = useRef(new AudioStepTimeline());
 
-  const { messages, streamingText, equationSteps, teacherState, aiLifecycleTick } =
-    useHandleMessage(stepTimelineRef, sendTimeRef, lastStepIndexRef);
+  const {
+    chat,
+    streamingText,
+    equationSteps,
+    teacherState,
+    aiLifecycleTick,
+    handleMessage,
+    appendStudentMessage,
+  } = useHandleMessage(stepTimelineRef, sendTimeRef, lastStepIndexRef);
+
+  useEffect(() => {
+    const unsubscribe = subscribe((msg) => {
+      handleMessage(msg);
+    });
+    return unsubscribe;
+  }, [subscribe, handleMessage]);
 
   // 3. Cleanup logic: Stop audio/timers when the hook unmounts
   useEffect(() => {
@@ -28,6 +42,7 @@ export function useLiveSession() {
 
   function sendUserMessage(text: string) {
     sendTimeRef.current = Date.now();
+    appendStudentMessage(text);
     const lower = text.toLowerCase();
 
     if (
@@ -95,7 +110,7 @@ export function useLiveSession() {
   
 
   return {
-    messages,
+    chat,
     streamingText,
     equationSteps,
     sendUserMessage,
@@ -113,7 +128,13 @@ export function useHandleMessage(
   sendTimeRef: React.RefObject<number | null>,
   lastStepIndexRef: React.RefObject<number | null>
 ) {
-  const [messages, setMessages] = useState<string[]>([]);
+  type ChatMessage = {
+    id: string;
+    role: "student" | "teacher";
+    text: string;
+    createdAtMs: number;
+  };
+  const [chat, setChat] = useState<ChatMessage[]>([]);
   const [equationSteps, setEquationSteps] = useState<EquationStep[]>([]);
   const [streamingText, setStreamingText] = useState("");
   const [aiLifecycleTick, setAiLifecycleTick] = useState(0);
@@ -122,6 +143,19 @@ export function useHandleMessage(
   const { interrupt: interruptTTS } = useTTS();
   const { playChunk } = useLiveAudio();
   const [teacherState, dispatchTeacher] = useTeacherState();
+
+  const appendStudentMessage = useCallback((text: string) => {
+    const createdAtMs = Date.now();
+    setChat((prev) => [
+      ...prev,
+      {
+        id: `student-${createdAtMs}-${prev.length}`,
+        role: "student",
+        text,
+        createdAtMs,
+      },
+    ]);
+  }, []);
 
   const handleMessage = useCallback(
     (message: ServerToClientMessage) => {
@@ -175,13 +209,9 @@ export function useHandleMessage(
 
       if (message.type === "equation_step") {
         lastStepIndexRef.current = message.payload.index;
-
-        // TODO... fix bug
-        //for some reason equationSteps state is an empty array,
-        //even after this is called, and 
+        
         setEquationSteps((s) => [...s, message.payload]);
 
-        //TODO... but the last equation step here is been saved in setDebugState
         setDebugState((s) => ({
           ...s,
           lastEquationStep: message.payload,
@@ -211,7 +241,16 @@ export function useHandleMessage(
           const finalText = bufferRef.current;
           bufferRef.current = "";
           setStreamingText("");
-          setMessages((prev) => [...prev, finalText]);
+          const createdAtMs = Date.now();
+          setChat((prev) => [
+            ...prev,
+            {
+              id: `teacher-${createdAtMs}-${prev.length}`,
+              role: "teacher",
+              text: finalText,
+              createdAtMs,
+            },
+          ]);
           // speak(finalText);
 
           setDebugState((s) => ({
@@ -222,13 +261,8 @@ export function useHandleMessage(
       }
 
       if (message.type === "ai_message") {
-        setMessages((prev) => [...prev, message.payload.text]);
+        // Intentionally ignore full ai_message to avoid duplicating chunk-finalized messages.
         // speak(message.payload.text);
-
-        setDebugState((s) => ({
-          ...s,
-          aiMessageCount: s.aiMessageCount + 1,
-        }));
       }
     },
     [
@@ -243,11 +277,12 @@ export function useHandleMessage(
   );
 
   return {
-    messages,
+    chat,
     streamingText,
     equationSteps,
     handleMessage,
     teacherState,
     aiLifecycleTick,
+    appendStudentMessage,
   };
 }

@@ -2,8 +2,6 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { WebSocketContext } from "./weSocketState";
 import { LiveWSClient } from "../transport/wsClient";
 import { useDebugState } from "./debugState";
-import { useHandleMessage } from "../session/useLiveSession";
-import { AudioStepTimeline } from "../audio/audioStepTimeLine";
 import type { ServerToClientMessage } from "@shared/types";
 
 
@@ -11,31 +9,28 @@ export function WebSocketProvider({ children }: { children: React.ReactNode }) {
   const wsClientRef = useRef<LiveWSClient | null>(null);
   const reconnectTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [reconnectCount, setReconnectCount] = useState(0);
-  // const [equationSteps, setEquationSteps] = useState<EquationStep[]>([]);
-
-  const stepTimelineRef = useRef(new AudioStepTimeline());
-  const sendTimeRef = useRef<number | null>(null);
-  const lastStepIndexRef = useRef<number | null>(null);
-  const { handleMessage } = useHandleMessage(
-    stepTimelineRef,
-    sendTimeRef,
-    lastStepIndexRef,
-    // setEquationSteps
+  const subscribersRef = useRef(
+    new Set<(msg: ServerToClientMessage) => void>()
   );
   const { setState: setDebugState } = useDebugState();
-  const handlerRef = useRef(handleMessage);
-
-  useEffect(() => {
-    handlerRef.current = handleMessage;
-  }, [handleMessage]);
+  const subscribe = useCallback((fn: (msg: ServerToClientMessage) => void) => {
+    subscribersRef.current.add(fn);
+    return () => subscribersRef.current.delete(fn);
+  }, []);
 
   useEffect(() => {
     let isComponentMounted = true;
 
     const connect = () => {
-      const client = new LiveWSClient((msg: ServerToClientMessage) =>
-        handlerRef.current(msg)
-      );
+      const client = new LiveWSClient((msg: ServerToClientMessage) => {
+        for (const fn of subscribersRef.current) {
+          try {
+            fn(msg);
+          } catch (error) {
+            console.error("WebSocket subscriber failed", error);
+          }
+        }
+      });
 
       // Setup listeners for the connection lifecycle
       client.onOpen = () => {
@@ -88,7 +83,7 @@ export function WebSocketProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   return (
-    <WebSocketContext.Provider value={{ wsClientRef, reconnect }}>
+    <WebSocketContext.Provider value={{ wsClientRef, reconnect, subscribe }}>
       {children}
     </WebSocketContext.Provider>
   );

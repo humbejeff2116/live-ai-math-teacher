@@ -25,7 +25,7 @@ export function TeachingSession() {
   const [isListening, setIsListening] = useState(false);
 
   const {
-    // messages,
+    chat,
     streamingText,
     equationSteps,
     sendUserMessage,
@@ -144,6 +144,29 @@ export function TeachingSession() {
           <div className="ai-streaming">
             {streamingText}
             <span className="cursor">▍</span>
+          </div>
+        )}
+        {chat.length > 0 && (
+          <div style={{ marginTop: 10, display: "flex", flexDirection: "column", gap: 8 }}>
+            {chat.map((message) => (
+              <div
+                key={message.id}
+                style={{
+                  alignSelf: message.role === "student" ? "flex-end" : "flex-start",
+                  maxWidth: "75%",
+                  padding: "8px 10px",
+                  borderRadius: 12,
+                  background:
+                    message.role === "student" ? "rgba(37, 99, 235, 0.12)" : "rgba(15, 23, 42, 0.06)",
+                  border:
+                    message.role === "student"
+                      ? "1px solid rgba(37, 99, 235, 0.25)"
+                      : "1px solid rgba(15, 23, 42, 0.12)",
+                }}
+              >
+                {message.text}
+              </div>
+            ))}
           </div>
         )}
         {equationSteps && (
