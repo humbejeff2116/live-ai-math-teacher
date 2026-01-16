@@ -147,21 +147,25 @@ export function TeachingSession() {
           </div>
         )}
         {chat.length > 0 && (
-          <div style={{ marginTop: 10, display: "flex", flexDirection: "column", gap: 8 }}>
+          <div style={{ marginTop: 12, display: "flex", flexDirection: "column", gap: 10 }}>
             {chat.map((message) => (
               <div
                 key={message.id}
                 style={{
                   alignSelf: message.role === "student" ? "flex-end" : "flex-start",
                   maxWidth: "75%",
-                  padding: "8px 10px",
-                  borderRadius: 12,
+                  padding: "10px 12px",
+                  borderRadius: 14,
+                  lineHeight: 1.45,
+                  whiteSpace: "pre-wrap",
+                  wordBreak: "break-word",
                   background:
                     message.role === "student" ? "rgba(37, 99, 235, 0.12)" : "rgba(15, 23, 42, 0.06)",
                   border:
                     message.role === "student"
                       ? "1px solid rgba(37, 99, 235, 0.25)"
                       : "1px solid rgba(15, 23, 42, 0.12)",
+                  boxShadow: "0 1px 2px rgba(15, 23, 42, 0.05)",
                 }}
               >
                 {message.text}
