@@ -66,6 +66,7 @@ export function TeachingSession() {
     setHoverMs,
     setPendingSeek,
     handleOnseekRequest,
+    handleSetPendingSeekByStep,
   } = useWaveform(
     stepTimeline,
     equationSteps,
@@ -105,6 +106,7 @@ export function TeachingSession() {
         seekToastTimeoutRef.current = null;
       }
     };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   return (
@@ -154,6 +156,19 @@ export function TeachingSession() {
             animatedStepId={animatedStepId}
             pendingStepId={pendingSeek?.stepId}
             pendingStepLabel={pendingSeek ? "Resume here?" : undefined}
+            onStepClick={(stepId) => {
+              const step = stepById.get(stepId);
+              if (!step) return;
+              if (activeStepId && stepId === activeStepId) {
+                setPendingSeek(null);
+                return;
+              }
+              handleSetPendingSeekByStep({
+                stepId,
+                clientX: window.innerWidth - 260,
+                clientY: 120,
+              });
+            }}
           />
         )}
       </div>

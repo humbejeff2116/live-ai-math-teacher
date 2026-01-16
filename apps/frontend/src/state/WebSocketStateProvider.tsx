@@ -3,6 +3,7 @@ import { WebSocketContext } from "./weSocketState";
 import { LiveWSClient } from "../transport/wsClient";
 import { useDebugState } from "./debugState";
 import { useHandleMessage } from "../session/useLiveSession";
+import { AudioStepTimeline } from "../audio/audioStepTimeLine";
 import type { ServerToClientMessage } from "@shared/types";
 
 
@@ -10,8 +11,17 @@ export function WebSocketProvider({ children }: { children: React.ReactNode }) {
   const wsClientRef = useRef<LiveWSClient | null>(null);
   const reconnectTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [reconnectCount, setReconnectCount] = useState(0);
+  // const [equationSteps, setEquationSteps] = useState<EquationStep[]>([]);
 
-  const { handleMessage } = useHandleMessage();
+  const stepTimelineRef = useRef(new AudioStepTimeline());
+  const sendTimeRef = useRef<number | null>(null);
+  const lastStepIndexRef = useRef<number | null>(null);
+  const { handleMessage } = useHandleMessage(
+    stepTimelineRef,
+    sendTimeRef,
+    lastStepIndexRef,
+    // setEquationSteps
+  );
   const { setState: setDebugState } = useDebugState();
   const handlerRef = useRef(handleMessage);
 

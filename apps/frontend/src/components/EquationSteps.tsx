@@ -10,6 +10,7 @@ type EquationStepsProps = {
   pendingStepId?: string;
   pendingStepLabel?: string;
   onReExplain: (id: string, style?: ReexplanStyle) => void;
+  onStepClick?: (id: string) => void;
 };
 
 export function EquationSteps({
@@ -21,6 +22,7 @@ export function EquationSteps({
   pendingStepId,
   pendingStepLabel,
   onReExplain,
+  onStepClick,
 }: EquationStepsProps) {
   useEffect(() => {
     if (!hoverStepId) return;
@@ -53,10 +55,12 @@ export function EquationSteps({
             <div
               key={step.id}
               id={`step-${step.id}`}
+              onClick={() => onStepClick?.(step.id)}
               style={{
                 padding: 10,
                 borderRadius: 10,
                 position: "relative",
+                cursor: onStepClick ? "pointer" : "default",
                 borderLeft: isActive
                   ? "4px solid #22c55e"
                   : isPreview

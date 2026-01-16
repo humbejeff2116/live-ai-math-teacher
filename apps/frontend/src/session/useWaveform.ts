@@ -8,7 +8,7 @@ export type PendingSeek = {
   stepId: string;
   x: number;
   y: number;
-  timeMs: number;
+  timeMs?: number;
 };
 
 export function useWaveform(
@@ -53,16 +53,28 @@ export function useWaveform(
   }, [hoverMs, timeline, equationSteps]);
 
   const handleSetPendingSeek = useEffectEvent((
-    pendingSeek: {
-      id: number;
-      stepId: string;
-      x: number;
-      y: number;
-      timeMs: number;
-    } | null
+    pendingSeek: PendingSeek | null
   ) => {
     setPendingSeek(pendingSeek);
-  })
+  });
+
+  const handleSetPendingSeekByStep = (payload: {
+    stepId: string;
+    clientX: number;
+    clientY: number;
+  }) => {
+    const rangeStartMs = timeline.getRangeForStep(payload.stepId)?.startMs;
+    const timeMs = Number.isFinite(rangeStartMs) ? rangeStartMs : currentTimeMs;
+
+    pendingSeekCounterRef.current += 1;
+    setPendingSeek({
+      id: pendingSeekCounterRef.current,
+      stepId: payload.stepId,
+      x: payload.clientX,
+      y: payload.clientY,
+      timeMs: timeMs,
+    });
+  };
 
   useEffect(() => {
     if (!pendingSeek) return;
@@ -110,6 +122,7 @@ export function useWaveform(
     setHoverMs,
     setPendingSeek,
     handleOnseekRequest,
+    handleSetPendingSeekByStep,
   };
 }
 

@@ -109,9 +109,9 @@ export function useLiveSession() {
 }
 
 export function useHandleMessage(
-  stepTimelineRef?: React.RefObject<AudioStepTimeline>,
-  sendTimeRef?: React.RefObject<number | null>,
-  lastStepIndexRef?: React.RefObject<number | null>
+  stepTimelineRef: React.RefObject<AudioStepTimeline>,
+  sendTimeRef: React.RefObject<number | null>,
+  lastStepIndexRef: React.RefObject<number | null>
 ) {
   const [messages, setMessages] = useState<string[]>([]);
   const [equationSteps, setEquationSteps] = useState<EquationStep[]>([]);
@@ -119,7 +119,6 @@ export function useHandleMessage(
   const [aiLifecycleTick, setAiLifecycleTick] = useState(0);
   const { setState: setDebugState } = useDebugState();
   const bufferRef = useRef("");
-  // const lastStepIndexRef = useRef<number | null>(null);
   const { interrupt: interruptTTS } = useTTS();
   const { playChunk } = useLiveAudio();
   const [teacherState, dispatchTeacher] = useTeacherState();
@@ -131,7 +130,7 @@ export function useHandleMessage(
           if (s.lastLatencyMs != null) return s;
           return {
             ...s,
-            lastLatencyMs: sendTimeRef?.current
+            lastLatencyMs: sendTimeRef.current
               ? Date.now() - sendTimeRef.current
               : undefined,
           };
@@ -156,14 +155,14 @@ export function useHandleMessage(
       }
 
       if (message.type === "step_audio_start") {
-        stepTimelineRef?.current.onStepStart(
+        stepTimelineRef.current.onStepStart(
           message.payload.stepId,
           message.payload.atMs
         );
       }
 
       if (message.type === "step_audio_end") {
-        stepTimelineRef?.current.onStepEnd(
+        stepTimelineRef.current.onStepEnd(
           message.payload.stepId,
           message.payload.atMs
         );
@@ -174,11 +173,15 @@ export function useHandleMessage(
         setAiLifecycleTick((t) => t + 1);
       }
 
-      if (message.type === "equation_step" && lastStepIndexRef) {
+      if (message.type === "equation_step") {
         lastStepIndexRef.current = message.payload.index;
 
+        // TODO... fix bug
+        //for some reason equationSteps state is an empty array,
+        //even after this is called, and 
         setEquationSteps((s) => [...s, message.payload]);
 
+        //TODO... but the last equation step here is been saved in setDebugState
         setDebugState((s) => ({
           ...s,
           lastEquationStep: message.payload,
