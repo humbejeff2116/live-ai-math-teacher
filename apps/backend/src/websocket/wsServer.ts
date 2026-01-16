@@ -12,6 +12,10 @@ export function startWebSocketServer(server: any) {
     ws.on("close", () => {
       console.log("WS client disconnected");
     });
+
+    ws.on("error", (err) => {
+      console.error("WS error:", err);
+    });
   });
   console.log("WebSocket server initialized");
 }

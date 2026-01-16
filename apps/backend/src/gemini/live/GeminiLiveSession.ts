@@ -42,44 +42,60 @@ export class GeminiLiveSession {
     this.streamingClient = new GeminiLiveStreamingClient();
     this.audioClient = new GeminiLiveAudioClient(
       (chunk) => {
-        this.ws.send(
-          JSON.stringify({
-            type: "ai_audio_chunk",
-            payload: {
-              audioBase64: chunk.toString("base64"),
-            },
-          })
-        );
+        try {
+          this.ws.send(
+            JSON.stringify({
+              type: "ai_audio_chunk",
+              payload: {
+                audioBase64: chunk.toString("base64"),
+              },
+            })
+          );
+        } catch (err) {
+          console.error("Error sending audio chunk:", err);
+        }
       },
       {
         onStepStart: (stepId) => {
-          const atMs = this.audioClock.nowMs();
-          this.stepAudioTracker.startStep(stepId);
+          try {
+            const atMs = this.audioClock.nowMs();
+            this.stepAudioTracker.startStep(stepId);
 
-          this.ws.send(
-            JSON.stringify({
-              type: "step_audio_start",
-              payload: { stepId, atMs },
-            })
-          );
+            this.ws.send(
+              JSON.stringify({
+                type: "step_audio_start",
+                payload: { stepId, atMs },
+              })
+            );
+          } catch (err) {
+            console.error("Error sending step audio start:", err);
+          }
         },
         onStepEnd: (stepId) => {
-          const atMs = this.audioClock.nowMs();
-          this.stepAudioTracker.endStep(stepId);
+          try {
+            const atMs = this.audioClock.nowMs();
+            this.stepAudioTracker.endStep(stepId);
 
-          this.ws.send(
-            JSON.stringify({
-              type: "step_audio_end",
-              payload: { stepId, atMs },
-            })
-          );
+            this.ws.send(
+              JSON.stringify({
+                type: "step_audio_end",
+                payload: { stepId, atMs },
+              })
+            );
+          } catch (err) {
+            console.error("Error sending step audio end:", err);
+          }
         },
       }
     );
   }
 
   private send(msg: ServerToClientMessage) {
-    this.ws.send(JSON.stringify(msg));
+    try {
+      this.ws.send(JSON.stringify(msg));
+    } catch (err) {
+      console.error("Error sending message:", err);
+    }
   }
 
   private setState(state: TeacherState, signal?: TeacherSignal) {
@@ -88,32 +104,39 @@ export class GeminiLiveSession {
   }
 
   async handleUserMessage(text: string, resume = false) {
-    this.interrupt();
+    try {
+      this.interrupt();
 
-    this.setState("thinking", { type: "teacher_thinking" });
+      this.setState("thinking", { type: "teacher_thinking" });
 
-    const prompt = resume
-      ? buildResumePrompt(text, this.resumeContext.lastCompletedStep)
-      : buildFreshPrompt(text);
+      const prompt = resume
+        ? buildResumePrompt(text, this.resumeContext.lastCompletedStep)
+        : buildFreshPrompt(text);
 
-    await this.streamExplanation(prompt);
+      await this.streamExplanation(prompt);
+    } catch (err) {
+      console.error("Error in handleUserMessage:", err);
+    }
   }
 
   async resumeFromStep(stepId: string) {
-    const step = this.stepExtractor.getSteps().find((s) => s.id === stepId);
+    try {
+      const step = this.stepExtractor
+        .getSteps()
+        .find((s) => s.id === stepId);
 
-    if (!step) {
-      // Fail safely: ask student what they want
-      await this.handleUserMessage("Which step should I continue from?");
-      return;
-    }
+      if (!step) {
+        // Fail safely: ask student what they want
+        await this.handleUserMessage("Which step should I continue from?");
+        return;
+      }
 
-    this.interrupt();
+      this.interrupt();
 
-    this.setState("re-explaining", {
-      type: "teacher_reexplaining",
-      stepIndex: step.index,
-    });
+      this.setState("re-explaining", {
+        type: "teacher_reexplaining",
+        stepIndex: step.index,
+      });
 
       const prompt = `
       You are a patient math teacher.
@@ -131,7 +154,10 @@ export class GeminiLiveSession {
       Continue from here.
       `.trim();
 
-    await this.streamExplanation(prompt);
+      await this.streamExplanation(prompt);
+    } catch (err) {
+      console.error("Error in resumeFromStep:", err); 
+    }
   }
 
   interrupt() {
@@ -158,87 +184,106 @@ export class GeminiLiveSession {
     studentUtterance: string;
     clientStepIndex: number | null;
   }) {
-    const resumeIndex =
-      this.resumeContext.lastCompletedStep?.index ?? args.clientStepIndex ?? -1;
+    try {
+      const resumeIndex =
+        this.resumeContext.lastCompletedStep?.index ??
+        args.clientStepIndex ??
+        -1;
 
-    this.send({
-      type: "ai_resumed",
-      payload: { resumeFromStepIndex: resumeIndex },
-    });
+      this.send({
+        type: "ai_resumed",
+        payload: { resumeFromStepIndex: resumeIndex },
+      });
 
-    const prompt = `
-    You are a real-time math tutor.
+      const prompt = `
+      You are a real-time math tutor.
 
-    Last completed step index: ${resumeIndex}
+      Last completed step index: ${resumeIndex}
 
-    Resume from the NEXT step only.
-    Do not repeat earlier steps.
+      Resume from the NEXT step only.
+      Do not repeat earlier steps.
 
-    Student said:
-    "${args.studentUtterance}"
-    `.trim();
+      Student said:
+      "${args.studentUtterance}"
+      `.trim();
 
-    await this.streamExplanation(prompt);
+      await this.streamExplanation(prompt);
+    } catch (err) {
+      console.error("Error in resumeFromInterruption:", err);
+    }
   }
 
   async reExplainStep(stepId: string, style = "simpler") {
-    const step = this.resumeContext.lastCompletedStep;
-    if (!step || step.id !== stepId) return;
+    try {
+      const step = this.resumeContext.lastCompletedStep;
+      if (!step || step.id !== stepId) return;
 
-    this.interrupt();
+      this.interrupt();
 
-    const prompt = `
-    Re-explain ONLY this step.
-    Style: ${style}
+      const prompt = `
+      Re-explain ONLY this step.
+      Style: ${style}
 
-    ${step.text}
-    Equation: ${step.equation}
-    `.trim();
+      ${step.text}
+      Equation: ${step.equation}
+      `.trim();
 
-    this.setState("re-explaining", {
-      type: "teacher_reexplaining",
-      stepIndex: step.index,
-    });
+      this.setState("re-explaining", {
+        type: "teacher_reexplaining",
+        stepIndex: step.index,
+      });
 
-    await this.streamExplanation(prompt);
+      await this.streamExplanation(prompt);
 
-    this.send({
-      type: "ai_reexplained",
-      payload: { reexplainedStepIndex: step.index },
-    });
+      this.send({
+        type: "ai_reexplained",
+        payload: { reexplainedStepIndex: step.index },
+      });
+    } catch (err) {
+      console.error("Error in reExplainStep:", err);
+    }
   }
 
   async handleNaturalLanguageStepSelection(text: string) {
-    const steps = this.stepExtractor.getSteps();
-    const step = resolveStepFromText(text, steps);
+    try {
+      const steps = this.stepExtractor.getSteps();
+      const step = resolveStepFromText(text, steps);
 
-    if (!step) {
-      await this.handleUserMessage(
-        "Which step would you like me to explain again?"
-      );
-      return;
+      if (!step) {
+        await this.handleUserMessage(
+          "Which step would you like me to explain again?"
+        );
+        return;
+      }
+
+      await this.reExplainStep(step.id, "simpler");
+    } catch (err) {
+      console.error("Error in handleNaturalLanguageStepSelection:", err);
     }
-
-    await this.reExplainStep(step.id, "simpler");
   }
 
   async handleConfusion(text: string) {
-    const steps = this.stepExtractor.getSteps();
-    const step = resolveConfusedStep(text, steps, this.currentSpokenStepId);
+    try {
+      const steps = this.stepExtractor.getSteps();
+      const step = resolveConfusedStep(text, steps, this.currentSpokenStepId);
 
-    if (!step) {
-      await this.handleUserMessage(
-        "I can slow down or explain a step again — which part is confusing?"
-      );
-      return;
+      if (!step) {
+        await this.handleUserMessage(
+          "I can slow down or explain a step again — which part is confusing?"
+        );
+        return;
+      }
+
+      await this.reExplainStep(step.id, "simpler");
+
+      this.send({
+        type: "ai_confusion_handled",
+        payload: { confusionHandledStepIndex: step.index },
+      });
+    } catch (err) {
+      console.error("Error in handleConfusion:", err);
+      
     }
-
-    await this.reExplainStep(step.id, "simpler");
-
-    this.send({
-      type: "ai_confusion_handled",
-      payload: { confusionHandledStepIndex: step.index },
-    });
   }
 
   hasResumeContext() {
@@ -251,64 +296,72 @@ export class GeminiLiveSession {
   }
 
   private async streamExplanation(prompt: string) {
-    this.abortController = new AbortController();
-    this.aborted = false;
-    this.isSpeaking = true;
-    this.stepExtractor.reset();
-    this.resumeContext.fullExplanationSoFar = "";
-
-    const stream = this.streamingClient.streamText(prompt, {
-      signal: this.abortController.signal,
-    });
-
-    let started = false;
-
     try {
-      for await (const chunk of stream) {
-        if (this.aborted || !chunk.text) break;
+      this.abortController = new AbortController();
+      this.aborted = false;
+      this.isSpeaking = true;
+      this.stepExtractor.reset();
+      this.resumeContext.fullExplanationSoFar = "";
 
-        if (!started) {
-          started = true;
-          this.setState("explaining", {
-            type: "teacher_explaining",
-            stepIndex: this.resumeContext.lastCompletedStep?.index,
+      const stream = await this.streamingClient.streamText(prompt, {
+        signal: this.abortController.signal,
+      });
+
+      let started = false;
+
+      console.log("streamExplanation: started streaming explanation");
+
+      try {
+        for await (const chunk of stream) {
+          if (this.aborted || !chunk.text) break;
+
+          console.log("chunk", chunk)
+
+          if (!started) {
+            started = true;
+            this.setState("explaining", {
+              type: "teacher_explaining",
+              stepIndex: this.resumeContext.lastCompletedStep?.index,
+            });
+          }
+
+          this.resumeContext.fullExplanationSoFar += chunk.text;
+
+          this.send({
+            type: "ai_message_chunk",
+            payload: { textDelta: chunk.text, isFinal: false },
           });
-        }
 
-        this.resumeContext.fullExplanationSoFar += chunk.text;
+          const step = this.stepExtractor.pushText(chunk.text);
+
+          if (step) {
+            this.resumeContext.lastCompletedStep = step;
+            this.currentSpokenStepId = step.id;
+
+            this.send({ type: "equation_step", payload: step });
+            // 🔊 Step-aware audio
+            // await this.audioClient.speakStep(step.id, step.text);
+          }
+        }
+      } finally {
+        this.isSpeaking = false;
 
         this.send({
           type: "ai_message_chunk",
-          payload: { textDelta: chunk.text, isFinal: false },
+          payload: { textDelta: "", isFinal: true },
         });
 
-        const step = this.stepExtractor.pushText(chunk.text);
+        this.send({
+          type: "ai_message",
+          payload: { text: this.resumeContext.fullExplanationSoFar },
+        });
 
-        if (step) {
-          this.resumeContext.lastCompletedStep = step;
-          this.currentSpokenStepId = step.id;
-
-          this.send({ type: "equation_step", payload: step });
-          // 🔊 Step-aware audio
-          await this.audioClient.speakStep(step.id, step.text);
+        if (!this.aborted) {
+          this.setState("waiting", { type: "teacher_waiting" });
         }
       }
-    } finally {
-      this.isSpeaking = false;
-
-      this.send({
-        type: "ai_message_chunk",
-        payload: { textDelta: "", isFinal: true },
-      });
-
-      this.send({
-        type: "ai_message",
-        payload: { text: this.resumeContext.fullExplanationSoFar },
-      });
-
-      if (!this.aborted) {
-        this.setState("waiting", { type: "teacher_waiting" });
-      }
+    } catch (err) {
+      console.error("Error in streamExplanation:", err);
     }
   }
 }

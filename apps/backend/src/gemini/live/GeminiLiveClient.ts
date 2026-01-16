@@ -11,27 +11,31 @@ export class GeminiLiveClient {
   async *streamGenerate(
     args: StreamGenerateArgs
   ): AsyncGenerator<{ text: string }, void, unknown> {
-    const stream = await geminiClient.models.generateContentStream({
-      model: args.model,
-      contents: [
-        {
-          role: "user",
-          parts: [{ text: args.input }],
+    try {
+      const stream = await geminiClient.models.generateContentStream({
+        model: args.model,
+        contents: [
+          {
+            role: "user",
+            parts: [{ text: args.input }],
+          },
+        ],
+        config: {
+          ...geminiLiveConfig.generationConfig,
+          abortSignal: args.signal
         },
-      ],
-      config: {
-        ...geminiLiveConfig.generationConfig,
-        abortSignal: args.signal
-      },
-    });
+      });
 
-    for await (const chunk of stream) {
-      if (args.signal?.aborted) return;
+      for await (const chunk of stream) {
+        if (args.signal?.aborted) return;
 
-      const text = chunk.text;
-      if (!text) continue;
+        const text = chunk.text;
+        if (!text) continue;
 
-      yield { text };
+        yield { text };
+      }
+    } catch (err) {
+      console.error("Error in streamGenerate:", err);
     }
   }
 }

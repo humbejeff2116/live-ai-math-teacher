@@ -40,6 +40,10 @@ export function liveSocketHandler(ws: WebSocket) {
       case "resume_from_step":
         session.resumeFromStep(msg.payload.stepId);
         break;
+
+      default:
+        console.warn("Unknown message type:", msg);
+        
     }
   });
 }

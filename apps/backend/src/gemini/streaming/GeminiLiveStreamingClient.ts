@@ -14,22 +14,28 @@ export class GeminiLiveStreamingClient implements GeminiStreamingClient {
       model?: string;
     }
   ): AsyncIterable<GeminiStreamChunk> {
-    const stream = this.client.streamGenerate({
-      model: opts?.model ?? "gemini-2.0-flash",
-      input: prompt,
-      signal: opts?.signal,
-    });
+    try {
+      const stream = await this.client.streamGenerate({
+        model: opts?.model ?? "gemini-2.5-flash",
+        input: prompt,
+        signal: opts?.signal,
+      });
 
-    for await (const chunk of stream) {
-      if (!chunk.text) continue;
+      console.log("Started streaming text from Gemini Live", JSON.stringify(stream));
 
-      yield {
-        text: chunk.text,
-        isFinal: false,
-      };
+      for await (const chunk of stream) {
+        if (!chunk.text) continue;
+
+        yield {
+          text: chunk.text,
+          isFinal: false,
+        };
+      }
+
+      // Explicit final marker
+      yield { isFinal: true };
+    } catch (err) {
+      console.error("Error in streamText:", err);
     }
-
-    // Explicit final marker
-    yield { isFinal: true };
   }
 }

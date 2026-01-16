@@ -32,34 +32,45 @@ export class GeminiLiveAudioClient {
     this.ws.on("message", (data) => {
       if (!this.active) return;
 
-      const msg = JSON.parse(data.toString());
-      if (msg.type === "audio_chunk") {
-        onAudioChunk(Buffer.from(msg.payload, "base64"));
+      try {
+        const msg = JSON.parse(data.toString());
+        if (msg.type === "audio_chunk") {
+          onAudioChunk(Buffer.from(msg.payload, "base64"));
+        }
+      } catch (err) {
+        console.error("Error parsing message:", err);
       }
     });
   }
 
   async speakStep(stepId: string, text: string) {
-    this.hooks.onStepStart(stepId);
+    try {
+      this.hooks.onStepStart(stepId);
+      // send to Gemini TTS
+      await this.sendTextPrompt(text);
 
-    // send to Gemini TTS
-    await this.sendTextPrompt(text);
-
-    this.hooks.onStepEnd(stepId);
+      this.hooks.onStepEnd(stepId);
+    } catch (err) {
+      console.error("Error in speakStep:", err);
+    }
   }
 
   async sendTextPrompt(text: string) {
     if (!this.active) return;
 
-    this.ws.send(
-      JSON.stringify({
-        type: "text_input",
-        payload: {
-          text,
-          voice: "en-US-neutral",
-        },
-      })
-    );
+    try {
+      this.ws.send(
+        JSON.stringify({
+          type: "text_input",
+          payload: {
+            text,
+            voice: "en-US-neutral",
+          },
+        })
+      );
+    } catch (err) {
+      console.error("Error sending text prompt:", err);
+    }
   }
 
   stop() {
