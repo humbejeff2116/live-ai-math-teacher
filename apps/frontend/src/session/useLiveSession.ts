@@ -17,10 +17,16 @@ export function useLiveSession() {
     chat,
     streamingText,
     equationSteps,
+    currentProblemId,
     teacherState,
     aiLifecycleTick,
+    problemIdRef,
+    setCurrentProblemId,
+    setChat,
+    setEquationSteps,
     handleMessage,
     appendStudentMessage,
+    maybeStartNewProblemFromStudentText,
   } = useHandleMessage(stepTimelineRef, sendTimeRef, lastStepIndexRef);
 
   useEffect(() => {
@@ -40,9 +46,25 @@ export function useLiveSession() {
     };
   }, []);
 
+    const startNewProblem = useCallback(() => {
+      problemIdRef.current += 1;
+      setCurrentProblemId(problemIdRef.current);
+
+      // Clear the chat and steps locally
+      setChat([]);
+      setEquationSteps([]);
+
+      // Inform the server to reset its internal step tracker
+      wsClientRef.current?.send({
+        type: "reset_session", // You'll need to handle this type on the server
+      });
+    }, [problemIdRef, setChat, setCurrentProblemId, setEquationSteps, wsClientRef]);
+  
+
   function sendUserMessage(text: string) {
     sendTimeRef.current = Date.now();
     appendStudentMessage(text);
+    maybeStartNewProblemFromStudentText(text);
     const lower = text.toLowerCase();
 
     if (
@@ -113,6 +135,7 @@ export function useLiveSession() {
     chat,
     streamingText,
     equationSteps,
+    currentProblemId,
     sendUserMessage,
     handleStudentSpeechFinal,
     reExplainStep,
@@ -120,26 +143,32 @@ export function useLiveSession() {
     resumeFromStep,
     aiLifecycleTick,
     getStepTimeline: () => stepTimelineRef.current,
+    startNewProblem,
   };
 }
+
+  export type UIEquationStep = EquationStep & { uiIndex: number; runId: number };
+  export type ChatMessage = {
+    id: string;
+    role: "student" | "teacher";
+    text: string;
+    createdAtMs: number;
+  };
 
 export function useHandleMessage(
   stepTimelineRef: React.RefObject<AudioStepTimeline>,
   sendTimeRef: React.RefObject<number | null>,
   lastStepIndexRef: React.RefObject<number | null>
 ) {
-  type ChatMessage = {
-    id: string;
-    role: "student" | "teacher";
-    text: string;
-    createdAtMs: number;
-  };
+  const DEBUG_EQUATION_STEPS = true;
   const [chat, setChat] = useState<ChatMessage[]>([]);
-  const [equationSteps, setEquationSteps] = useState<EquationStep[]>([]);
+  const [equationSteps, setEquationSteps] = useState<UIEquationStep[]>([]);
   const [streamingText, setStreamingText] = useState("");
   const [aiLifecycleTick, setAiLifecycleTick] = useState(0);
+  const [currentProblemId, setCurrentProblemId] = useState(0);
   const { setState: setDebugState } = useDebugState();
   const bufferRef = useRef("");
+  const problemIdRef = useRef(0);
   const { interrupt: interruptTTS } = useTTS();
   const { playChunk } = useLiveAudio();
   const [teacherState, dispatchTeacher] = useTeacherState();
@@ -155,6 +184,20 @@ export function useHandleMessage(
         createdAtMs,
       },
     ]);
+  }, []);
+
+  const maybeStartNewProblemFromStudentText = useCallback((text: string) => {
+    const trimmed = text.toLowerCase().trim();
+    // Only trigger if it looks like a command AND contains an equation
+    const isCommand =
+      trimmed.startsWith("solve") || trimmed.startsWith("calculate");
+    const hasEquation = trimmed.includes("=");
+
+    if (isCommand && hasEquation) {
+      problemIdRef.current += 1;
+      setCurrentProblemId(problemIdRef.current);
+      setEquationSteps([]); // Clear for the new problem
+    }
   }, []);
 
   const handleMessage = useCallback(
@@ -210,7 +253,33 @@ export function useHandleMessage(
       if (message.type === "equation_step") {
         lastStepIndexRef.current = message.payload.index;
         
-        setEquationSteps((s) => [...s, message.payload]);
+        if (DEBUG_EQUATION_STEPS) {     
+          console.log("[equation_step recv]", {
+            id: message.payload.id,
+            index: message.payload.index,
+            equation: message.payload.equation,
+            runId: problemIdRef.current,
+          });
+        }
+
+        setEquationSteps((prev) => {
+          const runId = problemIdRef.current;
+          const alreadyInRun = prev.filter((s) => s.runId === runId);
+          const exists = alreadyInRun.some((s) => s.id === message.payload.id);
+          if (exists) return prev;
+          const normalizeEquation = (equation: string) =>
+            equation.replace(/\s+/g, " ").trim();
+          const lastStep = alreadyInRun[alreadyInRun.length - 1];
+          if (
+            lastStep &&
+            normalizeEquation(lastStep.equation) ===
+              normalizeEquation(message.payload.equation)
+          ) {
+            return prev;
+          }
+          const uiIndex = alreadyInRun.length + 1;
+          return [...prev, { ...message.payload, runId, uiIndex }];
+        });
 
         setDebugState((s) => ({
           ...s,
@@ -229,7 +298,8 @@ export function useHandleMessage(
       }
 
       if (message.type === "ai_audio_chunk") {
-        playChunk(message.payload.audioBase64);
+        console.log("Received AI audio chunk for step:", message.payload.stepId);
+        playChunk(message.payload.audioBase64, message.payload.stepId);
       }
 
       if (message.type === "ai_message_chunk") {
@@ -265,24 +335,22 @@ export function useHandleMessage(
         // speak(message.payload.text);
       }
     },
-    [
-      dispatchTeacher,
-      lastStepIndexRef,
-      setDebugState,
-      sendTimeRef,
-      stepTimelineRef,
-      interruptTTS,
-      playChunk,
-    ]
+    [dispatchTeacher, setDebugState, sendTimeRef, stepTimelineRef, lastStepIndexRef, DEBUG_EQUATION_STEPS, interruptTTS, playChunk]
   );
 
   return {
     chat,
     streamingText,
     equationSteps,
+    currentProblemId,
+    problemIdRef,
+    setCurrentProblemId,
+    setChat,
+    setEquationSteps,
     handleMessage,
     teacherState,
     aiLifecycleTick,
     appendStudentMessage,
+    maybeStartNewProblemFromStudentText,
   };
 }
