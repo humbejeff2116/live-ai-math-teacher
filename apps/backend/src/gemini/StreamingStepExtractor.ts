@@ -5,6 +5,7 @@ export class StreamingStepExtractor {
   private buffer = "";
   private steps: EquationStep[] = [];
   private stepIndex = 0;
+  private static DEBUG_EQUATION_EXTRACTION = false;
   // private lastStep: EquationStep | null = null;
 
   pushText(delta: string): EquationStep | null {
@@ -26,16 +27,24 @@ export class StreamingStepExtractor {
   }
 
   private tryExtractStep(text: string): EquationStep | null {
-    const equationMatch = text.match(
-      /([0-9a-zA-Z+\-*/\s=]+=[0-9a-zA-Z+\-*/\s]+)/i
+    const sanitized = text
+      .replace(/[*_`]/g, "")
+      .split(/\r?\n/)[0]
+      .trim();
+    const equationMatch = sanitized.match(
+      /([0-9a-zA-Z+\-*/\s]+=[0-9a-zA-Z+\-*/\s]+)/i
     );
 
     if (!equationMatch) return null;
+    const equation = equationMatch[1].trim();
+    if (StreamingStepExtractor.DEBUG_EQUATION_EXTRACTION) {
+      console.log("[equation_extracted]", equation);
+    }
 
     const step: EquationStep = {
       id: randomUUID(),
       index: this.stepIndex++,
-      equation: equationMatch[1].trim(),
+      equation,
       text: text,
       type: text.includes("simplify")
         ? "simplify"
