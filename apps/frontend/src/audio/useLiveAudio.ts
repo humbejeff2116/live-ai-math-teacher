@@ -1,8 +1,9 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { LiveAudioPlayer } from "./liveAudioPlayer";
 import type { AudioPlaybackState, WaveformPoint } from "./audioTypes";
+import type { AudioStepTimeline } from "./audioStepTimeLine";
 
-export function useLiveAudio() {
+export function useLiveAudio(timeline?: AudioStepTimeline) {
   const [audioState, setAudioState] = useState<AudioPlaybackState>("idle");
   const [waveform, setWaveform] = useState<WaveformPoint[]>([]);
   const [currentTimeMs, setCurrentTimeMs] = useState(0);
@@ -31,13 +32,19 @@ export function useLiveAudio() {
     };
   }, []);
 
-  const playChunk = useCallback((base64: string) => {
+  const playChunk = useCallback(async (base64: string, stepId?: string) => {
     const player = playerRef.current;
     if (!player) return;
 
-    player.enqueueChunk(base64);
+    // Await the decoded timing from the player
+    const timing = await player.enqueueChunk(base64);
+
+    if (timing && stepId && timeline) {
+      // Tell the timeline exactly when this step will be heard
+      timeline.registerStepRange(stepId, timing.startMs, timing.endMs);
+    }
     setWaveform([...player.getWaveform()]);
-  }, []);
+  }, [timeline]);
 
   const seekToMs = useCallback((targetMs: number) => {
     const player = playerRef.current;

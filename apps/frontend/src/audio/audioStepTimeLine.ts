@@ -37,21 +37,39 @@ export class AudioStepTimeline {
   }
 
   /**
+   * Precise registration of audio duration per step.
+   * If multiple chunks are received for the same step,
+   * it expands the existing range.
+   */
+  registerStepRange(stepId: string, startMs: number, endMs: number) {
+    if (this._isDestroyed) return;
+
+    const existing = this.ranges.find((r) => r.stepId === stepId);
+
+    if (existing) {
+      // Expand the existing range to cover the new chunk
+      existing.startMs = Math.min(existing.startMs, startMs);
+      existing.endMs = Math.max(existing.endMs ?? 0, endMs);
+    } else {
+      // First chunk for this step
+      this.ranges.push({
+        stepId,
+        startMs,
+        endMs,
+      });
+
+      // Sort ranges by start time to ensure binary search works
+      this.ranges.sort((a, b) => a.startMs - b.startMs);
+    }
+  }
+
+  /**
    * O(log n) active step lookup
    */
   getActiveStep(atMs: number): string | undefined {
-    if (this._isDestroyed) return undefined;
+    if (this._isDestroyed || this.ranges.length === 0) return undefined;
 
-    const idx = this.findRangeIndex(atMs);
-    if (idx === -1) return undefined;
-
-    const r = this.ranges[idx];
-    const end = r.endMs ?? Infinity;
-
-    return atMs >= r.startMs && atMs < end ? r.stepId : undefined;
-  }
-
-  private findRangeIndex(atMs: number): number {
+    // Binary search for the range containing atMs
     let low = 0;
     let high = this.ranges.length - 1;
 
@@ -65,18 +83,18 @@ export class AudioStepTimeline {
       } else if (atMs >= end) {
         low = mid + 1;
       } else {
-        return mid;
+        return range.stepId;
       }
     }
-    return -1;
+    return undefined;
   }
 
-  getTotalDurationMs(): number { 
+  getTotalDurationMs(): number {
     if (this.ranges.length === 0) return 0;
 
     const lastRange = this.ranges[this.ranges.length - 1];
-    return (lastRange.endMs ?? lastRange.startMs);
-  } 
+    return lastRange.endMs ?? lastRange.startMs;
+  }
 
   getRanges(): StepAudioRange[] {
     return this.ranges;

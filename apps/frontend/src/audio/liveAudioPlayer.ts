@@ -7,6 +7,7 @@ export class LiveAudioPlayer {
   private queue: AudioBuffer[] = [];
   private playing = false;
   private stopped = false;
+  private totalEnqueuedDurationMs = 0; // Track total duration enqueued so far
 
   private waveform: WaveformPoint[] = [];
 
@@ -86,17 +87,25 @@ export class LiveAudioPlayer {
     }, fadeOutMs);
   }
 
-  async enqueueChunk(base64: string) {
-    if (this.stopped) return;
+  async enqueueChunk(
+    base64: string
+  ): Promise<{ startMs: number; endMs: number } | null> {
+    if (this.stopped) return null;
 
     const data = Uint8Array.from(atob(base64), (c) => c.charCodeAt(0));
     const buffer = await this.audioCtx.decodeAudioData(data.buffer);
 
+    const durationMs = buffer.duration * 1000;
+    const startMs = this.totalEnqueuedDurationMs;
+    const endMs = startMs + durationMs;
+
     this.queue.push(buffer);
+    this.totalEnqueuedDurationMs = endMs; // Increment the timeline marker
 
     if (!this.playing) {
       this.playNext();
     }
+    return { startMs, endMs };
   }
 
   stop() {
@@ -104,6 +113,7 @@ export class LiveAudioPlayer {
     this.playing = false;
     this.stopped = true;
     this.startTimeMs = null;
+    this.totalEnqueuedDurationMs = 0; // Reset timeline marker
     this.onStop?.();
   }
 
