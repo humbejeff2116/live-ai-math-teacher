@@ -21,8 +21,6 @@ export class GeminiLiveStreamingClient implements GeminiStreamingClient {
         signal: opts?.signal,
       });
 
-      console.log("Started streaming text from Gemini Live", JSON.stringify(stream));
-
       for await (const chunk of stream) {
         if (!chunk.text) continue;
 
