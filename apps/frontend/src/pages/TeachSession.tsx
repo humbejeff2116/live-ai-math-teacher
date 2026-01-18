@@ -1,15 +1,20 @@
 import { useEffect, useState } from "react";
 import { useLiveSession } from "../session/useLiveSession";
 import { useSpeechInput } from "../speech/useSpeechInput";
-import { VoiceInputButton } from "../components/VoiceInputButton";
-import { EquationSteps } from "../components/EquationSteps";
 import { useLiveAudio } from "../audio/useLiveAudio";
 import { Waveform } from "../components/WaveForm";
 import { WaveSeekConfirm } from "../components/WaveSeekConfirm";
 import type { TeacherState } from "@shared/types";
 import { useWaveform } from "../session/useWaveform";
 import { useWaveSeek } from "../session/useWaveSeek";
-
+import { SessionShell } from "../components/session/SessionShell";
+import { TopBar } from "../components/session/TopBar";
+import { StepsRail } from "../components/session/StepsRail";
+import { ConversationPanel } from "../components/session/ConversationPanel";
+import { QuickSettings } from "../components/session/QuickSettings";
+import { InputBar } from "../components/session/InputBar";
+import { useDebugState } from "../state/debugState";
+import { useWebSocketState } from "../state/weSocketState";
 
 const TEACHER_LABEL: Record<TeacherState, string> = {
   idle: "Idle",
@@ -23,6 +28,8 @@ const TEACHER_LABEL: Record<TeacherState, string> = {
 export function TeachingSession() {
   const [input, setInput] = useState("");
   const [isListening, setIsListening] = useState(false);
+  const { state: debugState } = useDebugState();
+  const { reconnect } = useWebSocketState();
 
   const {
     chat,
@@ -39,22 +46,23 @@ export function TeachingSession() {
     startNewProblem,
   } = useLiveSession();
 
-  const { 
-    audioState, 
-    waveform, 
+  const {
+    audioState,
+    waveform,
     currentTimeMs,
     seekWithFadeMs,
   } = useLiveAudio();
 
-  const { 
-    startListening 
-  } = useSpeechInput((text) => {
-    if (isListening) {
-      handleStudentSpeechFinal(text);
-    } else {
-      sendUserMessage(text);
-    }
-  }, setIsListening);
+  const { startListening } = useSpeechInput(
+    (text) => {
+      if (isListening) {
+        handleStudentSpeechFinal(text);
+      } else {
+        sendUserMessage(text);
+      }
+    },
+    setIsListening
+  );
 
   const stepTimeline = getStepTimeline();
   const activeStepId = stepTimeline.getActiveStep(currentTimeMs);
@@ -69,15 +77,10 @@ export function TeachingSession() {
     setPendingSeek,
     handleOnseekRequest,
     handleSetPendingSeekByStep,
-  } = useWaveform(
-    stepTimeline,
-    equationSteps,
-    currentTimeMs,
-    aiLifecycleTick
-  );
+  } = useWaveform(stepTimeline, equationSteps, currentTimeMs, aiLifecycleTick);
 
   const {
-    isConfirmingSeek, 
+    isConfirmingSeek,
     stepById,
     onConfirmWaveSeek,
     seekToastTimeoutRef,
@@ -94,13 +97,18 @@ export function TeachingSession() {
     resumeFromStep
   );
 
-
-
   const animatedStepId = hoverStepId ?? activeStepId ?? null;
   const hoverLabel = hoverStep
     ? `Step ${hoverStep.uiIndex} \u2013 ${hoverStep.type}`
     : null;
-  const visibleSteps = equationSteps.filter((step) => step.runId === currentProblemId);
+  const visibleSteps = equationSteps.filter(
+    (step) => step.runId === currentProblemId
+  );
+  const connectionStatus = debugState.isReconnecting
+    ? "reconnecting"
+    : debugState.connected
+    ? "connected"
+    : "disconnected";
 
   useEffect(() => {
     return () => {
@@ -109,117 +117,58 @@ export function TeachingSession() {
         seekToastTimeoutRef.current = null;
       }
     };
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  return (
-    <div style={{ padding: 24 }}>
-      {/* <h2>Live AI Math Teacher</h2> */}
-      <div
-        style={{
-          display: "flex",
-          justifyContent: "space-between",
-          alignItems: "center",
-        }}
-      >
-        <h2>Live AI Math Teacher</h2>
-        <button
-          onClick={startNewProblem}
-          style={{
-            marginLeft: "1rem",
-            background: "#ef4444",
-            color: "white",
-            border: "none",
-            padding: "8px 12px",
-            borderRadius: "6px",
-            cursor: "pointer",
-          }}
-        >
-          Clear & New Problem
-        </button>
-      </div>
-      {audioState === "playing" && (
-        <>
-          <p style={{ opacity: 0.7 }}>🔊 Teacher is speaking…</p>
-          <Waveform
-            waveform={waveform}
-            stepRanges={stepTimeline?.getRanges() || []}
-            durationMs={stepTimeline?.getTotalDurationMs() || 0}
-            currentTimeMs={currentTimeMs}
-            animatedStepId={animatedStepId}
-            hoverLabel={hoverLabel}
-            hoverMs={hoverMs}
-            onHoverTime={setHoverMs}
-            onSeekRequest={handleOnseekRequest}
-          />
-        </>
-      )}
-      <p>
-        🧠 Teacher: <strong>{TEACHER_LABEL[teacherState]}</strong>
-      </p>
+  const handleSend = () => {
+    const message = input.trim();
+    if (!message) return;
+    sendUserMessage(message);
+    setInput("");
+  };
 
-      <div
-        style={{
-          border: "1px solid #ccc",
-          padding: 12,
-          minHeight: 120,
-          marginBottom: 12,
-        }}
-      >
-        {streamingText && (
-          <div className="ai-streaming">
-            {streamingText}
-            <span className="cursor">▍</span>
-          </div>
-        )}
-        {chat.length > 0 && (
-          <div
-            style={{
-              marginTop: 12,
-              display: "flex",
-              flexDirection: "column",
-              gap: 10,
-            }}
-          >
-            {chat.map((message) => (
-              <div
-                key={message.id}
-                style={{
-                  alignSelf:
-                    message.role === "student" ? "flex-end" : "flex-start",
-                  textAlign: message.role === "student" ? "right" : "left",
-                  maxWidth: "75%",
-                  padding: "10px 12px",
-                  borderRadius: 14,
-                  lineHeight: 1.45,
-                  whiteSpace: "pre-wrap",
-                  wordBreak: "break-word",
-                  background:
-                    message.role === "student"
-                      ? "rgba(37, 99, 235, 0.12)"
-                      : "rgba(15, 23, 42, 0.06)",
-                  border:
-                    message.role === "student"
-                      ? "1px solid rgba(37, 99, 235, 0.25)"
-                      : "1px solid rgba(15, 23, 42, 0.12)",
-                  boxShadow: "0 1px 2px rgba(15, 23, 42, 0.05)",
-                }}
-              >
-                {message.text}
+  return (
+    <>
+      <SessionShell
+        topBar={
+          <TopBar
+            teacherLabel={TEACHER_LABEL[teacherState]}
+            status={connectionStatus}
+            onReconnect={reconnect}
+            onStartNewProblem={startNewProblem}
+          />
+        }
+        audioStrip={
+          audioState === "playing" ? (
+            <div className="flex flex-col gap-2">
+              <div className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+                Teacher is speaking
               </div>
-            ))}
-          </div>
-        )}
-        {visibleSteps && (
-          <EquationSteps
+              <div className="rounded-lg border border-slate-200 bg-white px-3 py-2 shadow-sm">
+                <Waveform
+                  waveform={waveform}
+                  stepRanges={stepTimeline?.getRanges() || []}
+                  durationMs={stepTimeline?.getTotalDurationMs() || 0}
+                  currentTimeMs={currentTimeMs}
+                  animatedStepId={animatedStepId}
+                  hoverLabel={hoverLabel}
+                  hoverMs={hoverMs}
+                  onHoverTime={setHoverMs}
+                  onSeekRequest={handleOnseekRequest}
+                />
+              </div>
+            </div>
+          ) : null
+        }
+        stepsRail={
+          <StepsRail
             steps={visibleSteps}
             activeStepId={activeStepId}
-            onReExplain={reExplainStep}
             previewStepId={previewStepId}
             hoverStepId={hoverStepId}
             animatedStepId={animatedStepId}
             pendingStepId={pendingSeek?.stepId}
-            pendingStepLabel={pendingSeek ? "Resume here?" : undefined}
+            onReExplain={reExplainStep}
             onStepClick={(stepId) => {
               const step = stepById.get(stepId);
               if (!step) return;
@@ -234,30 +183,20 @@ export function TeachingSession() {
               });
             }}
           />
-        )}
-      </div>
-
-      <div style={{ marginBottom: 12 }}>
-        <input
-          value={input}
-          onChange={(e) => setInput(e.target.value)}
-          placeholder="Type your answer..."
-          style={{ width: "70%", marginRight: 8, padding: "9px 8px" }}
-        />
-
-        <button
-          onClick={() => {
-            sendUserMessage(input);
-            setInput("");
-          }}
-        >
-          Send
-        </button>
-      </div>
-
-      <VoiceInputButton
-        listening={isListening}
-        handleStartListening={startListening}
+        }
+        conversation={
+          <ConversationPanel chat={chat} streamingText={streamingText} />
+        }
+        quickSettings={<QuickSettings />}
+        inputBar={
+          <InputBar
+            input={input}
+            setInput={setInput}
+            onSend={handleSend}
+            isListening={isListening}
+            onStartListening={startListening}
+          />
+        }
       />
 
       {isConfirmingSeek && (
@@ -312,6 +251,6 @@ export function TeachingSession() {
           onCancel={() => setPendingSeek(null)}
         />
       )}
-    </div>
+    </>
   );
 }

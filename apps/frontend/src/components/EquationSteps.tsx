@@ -11,6 +11,7 @@ type EquationStepsProps = {
   pendingStepLabel?: string;
   onReExplain: (id: string, style?: ReexplanStyle) => void;
   onStepClick?: (id: string) => void;
+  showHeader?: boolean;
 };
 
 export function EquationSteps({
@@ -23,6 +24,7 @@ export function EquationSteps({
   pendingStepLabel,
   onReExplain,
   onStepClick,
+  showHeader = true,
 }: EquationStepsProps) {
   useEffect(() => {
     if (!hoverStepId) return;
@@ -33,7 +35,7 @@ export function EquationSteps({
   }, [hoverStepId]);
 
   return (
-    <div style={{ marginTop: 16 }}>
+    <div className={showHeader ? "mt-4" : undefined}>
       <style>
         {`@keyframes pendingPulse {
           0% { background-color: rgba(99,102,241,0.04); }
@@ -41,7 +43,7 @@ export function EquationSteps({
           100% { background-color: rgba(99,102,241,0.04); }
         }`}
       </style>
-      <h3>📐 Solution Steps</h3>
+      {showHeader && <h3>Solution Steps</h3>}
 
       {steps.map((step) => {
         const isActive = step.id === activeStepId;

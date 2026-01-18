@@ -5,67 +5,137 @@ export class StreamingStepExtractor {
   private buffer = "";
   private steps: EquationStep[] = [];
   private stepIndex = 0;
+
+  private lastEmittedEquationNorm: string | null = null;
+
   private static DEBUG_EQUATION_EXTRACTION = false;
-  // private lastStep: EquationStep | null = null;
+
+  // How much recent text we keep around to scan for equations
+  private static MAX_BUFFER_CHARS = 2500;
 
   pushText(delta: string): EquationStep | null {
     this.buffer += delta;
 
-    // Heuristic: step completed when Gemini finishes a sentence
-    if (!this.buffer.match(/[.!?]\s*$/)) {
+    // Keep buffer bounded (keep the most recent N chars)
+    if (this.buffer.length > StreamingStepExtractor.MAX_BUFFER_CHARS) {
+      this.buffer = this.buffer.slice(-StreamingStepExtractor.MAX_BUFFER_CHARS);
+    }
+
+    // Try to extract an equation step as soon as we see one
+    const step = this.tryExtractStepFromBuffer(this.buffer);
+    if (!step) return null;
+
+    this.steps.push(step);
+    return step;
+  }
+
+  private tryExtractStepFromBuffer(rawText: string): EquationStep | null {
+    const sanitized = this.sanitize(rawText);
+
+    // Find all equation candidates in the sanitized buffer
+    const candidates = this.extractEquationCandidates(sanitized);
+    if (candidates.length === 0) return null;
+
+    // Prefer the most recent equation in the stream
+    const equation = candidates[candidates.length - 1];
+
+    const equationNorm = this.normalizeEquation(equation);
+    if (!equationNorm) return null;
+
+    // Dedupe: if Gemini repeats the same equation, don’t emit again
+    if (this.lastEmittedEquationNorm === equationNorm) {
+      if (StreamingStepExtractor.DEBUG_EQUATION_EXTRACTION) {
+        console.log("[equation_deduped]", equation);
+      }
       return null;
     }
 
-    const sentence = this.buffer.trim();
-    this.buffer = "";
+    this.lastEmittedEquationNorm = equationNorm;
 
-    const extracted = this.tryExtractStep(sentence);
-    if (!extracted) return null;
-
-    this.steps.push(extracted);
-    return extracted;
-  }
-
-  private tryExtractStep(text: string): EquationStep | null {
-    const sanitized = text
-      .replace(/[*_`]/g, "")
-      .split(/\r?\n/)[0]
-      .trim();
-    const equationMatch = sanitized.match(
-      /([0-9a-zA-Z+\-*/\s]+=[0-9a-zA-Z+\-*/\s]+)/i
-    );
-
-    if (!equationMatch) return null;
-    const equation = equationMatch[1].trim();
     if (StreamingStepExtractor.DEBUG_EQUATION_EXTRACTION) {
-      console.log("[equation_extracted]", equation);
+      console.log("[equation_extracted]", {
+        equation,
+        index: this.stepIndex,
+      });
     }
+
+    // Keep the step text small and relevant: last ~300 chars of raw stream
+    const textSnippet = rawText.slice(-300).trim();
 
     const step: EquationStep = {
       id: randomUUID(),
       index: this.stepIndex++,
       equation,
-      text: text,
-      type: text.includes("simplify")
-        ? "simplify"
-        : text.includes("therefore") || text.includes("so")
-        ? "result"
-        : "transform",
+      text: textSnippet.length > 0 ? textSnippet : rawText,
+      type: this.inferType(rawText),
     };
 
-    // this.lastStep = step;
     return step;
   }
 
-  // getLastStep() {
-  //   return this.lastStep;
-  // }
+  private inferType(text: string): EquationStep["type"] {
+    const lower = text.toLowerCase();
+    if (lower.includes("simplif")) return "simplify";
+    if (
+      lower.includes("therefore") ||
+      lower.includes("so,") ||
+      lower.includes("so ")
+    )
+      return "result";
+    return "transform";
+  }
+
+  private sanitize(text: string): string {
+    return (
+      text
+        // Remove latex delimiters
+        .replace(/\\\(|\\\)|\\\[|\\\]/g, " ")
+        .replace(/\$/g, " ")
+        // Remove markdown wrappers
+        .replace(/\*\*|__|`/g, " ")
+        // Normalize unicode minus to hyphen
+        .replace(/\u2212/g, "-")
+        // Collapse whitespace
+        .replace(/\s+/g, " ")
+        .trim()
+    );
+  }
+
+  private extractEquationCandidates(text: string): string[] {
+    // Allow common math characters + parentheses + powers + decimals
+    const re = /([0-9a-zA-Z\s+\-*/^().]+=[0-9a-zA-Z\s+\-*/^().]+)/g;
+
+    const out: string[] = [];
+    let m: RegExpExecArray | null;
+
+    while ((m = re.exec(text)) !== null) {
+      const candidate = (m[1] ?? "").trim();
+
+      // Basic filtering: require something meaningful on both sides
+      if (!candidate.includes("=")) continue;
+      if (candidate.length < 5) continue;
+
+      // Trim trailing punctuation
+      const cleaned = candidate.replace(/[.,;:!?]+$/, "").trim();
+
+      // Must contain at least one digit or variable letter
+      if (!/[0-9a-zA-Z]/.test(cleaned)) continue;
+
+      out.push(cleaned);
+    }
+
+    return out;
+  }
+
+  private normalizeEquation(equation: string): string {
+    return equation.toLowerCase().replace(/\s+/g, " ").trim();
+  }
 
   reset() {
     this.buffer = "";
     this.steps = [];
     this.stepIndex = 0;
-    // this.lastStep = null;
+    this.lastEmittedEquationNorm = null;
   }
 
   getSteps() {

@@ -126,6 +126,7 @@ export class GeminiLiveSession {
 
       if (isContinuing && this.resumeContext.lastCompletedStep) {
         // Use the smart resume prompt with history
+        console.log("handleUserMessage: building resume prompt");
         prompt = buildResumePrompt(
           text,
           this.resumeContext.lastCompletedStep,
@@ -133,6 +134,7 @@ export class GeminiLiveSession {
         );
       } else {
         // Only use fresh prompt if we have NO active problem context
+        console.log("handleUserMessage: building fresh prompt");
         prompt = buildFreshPrompt(text);
       }
 
