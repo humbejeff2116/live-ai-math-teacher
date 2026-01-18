@@ -13,6 +13,9 @@ import { GeminiLiveStreamingClient } from "../streaming/GeminiLiveStreamingClien
 import { GeminiStreamingClient } from "../streaming/GeminiStreamingClient";
 import { AudioClock } from "./AudioClock";
 import { StepAudioTracker } from "./StepAudioTracker";
+import { randomUUID } from "node:crypto";
+
+const DEBUG_EQUATION_STEPS = true;
 
 type ResumeContext = {
   lastCompletedStep?: EquationStep;
@@ -41,13 +44,14 @@ export class GeminiLiveSession {
   constructor(private ws: WebSocket) {
     this.streamingClient = new GeminiLiveStreamingClient();
     this.audioClient = new GeminiLiveAudioClient(
-      (chunk) => {
+      (chunk, stepId) => {
         try {
           this.ws.send(
             JSON.stringify({
               type: "ai_audio_chunk",
               payload: {
                 audioBase64: chunk.toString("base64"),
+                stepId: stepId, // Include stepId in the message to the client
               },
             })
           );
@@ -56,7 +60,11 @@ export class GeminiLiveSession {
         }
       },
       {
+        // stepId: null,
         onStepStart: (stepId) => {
+          console.log("GeminiLiveSession:onStepStart stepId:", stepId);
+          if (!stepId) return;
+
           try {
             const atMs = this.audioClock.nowMs();
             this.stepAudioTracker.startStep(stepId);
@@ -72,6 +80,8 @@ export class GeminiLiveSession {
           }
         },
         onStepEnd: (stepId) => {
+          console.log("GeminiLiveSession:onStepEnd stepId:", stepId);
+          if (!stepId) return;
           try {
             const atMs = this.audioClock.nowMs();
             this.stepAudioTracker.endStep(stepId);
@@ -103,15 +113,28 @@ export class GeminiLiveSession {
     if (signal) this.send(signal);
   }
 
-  async handleUserMessage(text: string, resume = false) {
+  async handleUserMessage(text: string, forceResumeMode = false) {
     try {
       this.interrupt();
 
       this.setState("thinking", { type: "teacher_thinking" });
 
-      const prompt = resume
-        ? buildResumePrompt(text, this.resumeContext.lastCompletedStep)
-        : buildFreshPrompt(text);
+      const isContinuing =
+        Boolean(this.resumeContext.lastCompletedStep) || forceResumeMode;
+
+        let prompt: string;
+
+      if (isContinuing && this.resumeContext.lastCompletedStep) {
+        // Use the smart resume prompt with history
+        prompt = buildResumePrompt(
+          text,
+          this.resumeContext.lastCompletedStep,
+          this.resumeContext.fullExplanationSoFar
+        );
+      } else {
+        // Only use fresh prompt if we have NO active problem context
+        prompt = buildFreshPrompt(text);
+      }
 
       await this.streamExplanation(prompt);
     } catch (err) {
@@ -121,9 +144,7 @@ export class GeminiLiveSession {
 
   async resumeFromStep(stepId: string) {
     try {
-      const step = this.stepExtractor
-        .getSteps()
-        .find((s) => s.id === stepId);
+      const step = this.stepExtractor.getSteps().find((s) => s.id === stepId);
 
       if (!step) {
         // Fail safely: ask student what they want
@@ -156,7 +177,7 @@ export class GeminiLiveSession {
 
       await this.streamExplanation(prompt);
     } catch (err) {
-      console.error("Error in resumeFromStep:", err); 
+      console.error("Error in resumeFromStep:", err);
     }
   }
 
@@ -282,7 +303,6 @@ export class GeminiLiveSession {
       });
     } catch (err) {
       console.error("Error in handleConfusion:", err);
-      
     }
   }
 
@@ -295,13 +315,21 @@ export class GeminiLiveSession {
     this.audioClient.close();
   }
 
+  resetProblem() {
+    this.stepExtractor.reset();
+    this.resumeContext = {
+      lastCompletedStep: undefined,
+      fullExplanationSoFar: "",
+    };
+  }
+
   private async streamExplanation(prompt: string) {
     try {
       this.abortController = new AbortController();
       this.aborted = false;
       this.isSpeaking = true;
-      this.stepExtractor.reset();
-      this.resumeContext.fullExplanationSoFar = "";
+      // FIX 2: Re-enable audio if it was stopped by interrupt
+      this.audioClient.resume();
 
       const stream = await this.streamingClient.streamText(prompt, {
         signal: this.abortController.signal,
@@ -315,7 +343,7 @@ export class GeminiLiveSession {
         for await (const chunk of stream) {
           if (this.aborted || !chunk.text) break;
 
-          console.log("chunk", chunk)
+          console.log("chunk", chunk);
 
           if (!started) {
             started = true;
@@ -323,6 +351,9 @@ export class GeminiLiveSession {
               type: "teacher_explaining",
               stepIndex: this.resumeContext.lastCompletedStep?.index,
             });
+
+            // Optional: Add a separator in history for readability
+            this.resumeContext.fullExplanationSoFar += "\n\n[Teacher]: ";
           }
 
           this.resumeContext.fullExplanationSoFar += chunk.text;
@@ -338,6 +369,13 @@ export class GeminiLiveSession {
             this.resumeContext.lastCompletedStep = step;
             this.currentSpokenStepId = step.id;
 
+            if (DEBUG_EQUATION_STEPS) {
+              console.log("[equation_step send]", {
+                id: step.id,
+                index: step.index,
+                equation: step.equation,
+              });
+            }
             this.send({ type: "equation_step", payload: step });
             // 🔊 Step-aware audio
             await this.audioClient.speakStep(step.id, step.text);
