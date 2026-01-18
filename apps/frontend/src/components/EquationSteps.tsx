@@ -1,8 +1,8 @@
 import type { EquationStep, ReexplanStyle } from "@shared/types";
-import { useEffect } from "react";
+import { Fragment, useEffect } from "react";
 
 type EquationStepsProps = {
-  steps: EquationStep[];
+  steps: (EquationStep & { uiIndex: number })[];
   activeStepId?: string;
   previewStepId?: string;
   hoverStepId: string | null;
@@ -51,9 +51,8 @@ export function EquationSteps({
         const isAnimated = step.id === animatedStepId;
 
         return (
-          <>
+          <Fragment key={step.id}>
             <div
-              key={step.id}
               id={`step-${step.id}`}
               onClick={() => onStepClick?.(step.id)}
               style={{
@@ -61,6 +60,7 @@ export function EquationSteps({
                 borderRadius: 10,
                 position: "relative",
                 cursor: onStepClick ? "pointer" : "default",
+                textAlign: "left",
                 borderLeft: isActive
                   ? "4px solid #22c55e"
                   : isPreview
@@ -107,7 +107,7 @@ export function EquationSteps({
                   {pendingStepLabel}
                 </div>
               )}
-              <strong>Step {step.index + 1}</strong>
+              <strong>Step {step.uiIndex}</strong>
               <div style={{ fontSize: 16, marginTop: 4 }}>{step.equation}</div>
               <div style={{ opacity: 0.8 }}>{step.text}</div>
 
@@ -133,7 +133,7 @@ export function EquationSteps({
                 }}
               />
             )}
-          </>
+          </Fragment>
         );
       })}
     </div>
