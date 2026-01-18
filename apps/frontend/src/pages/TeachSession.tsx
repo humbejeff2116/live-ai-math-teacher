@@ -28,6 +28,7 @@ export function TeachingSession() {
     chat,
     streamingText,
     equationSteps,
+    currentProblemId,
     sendUserMessage,
     handleStudentSpeechFinal,
     reExplainStep,
@@ -35,6 +36,7 @@ export function TeachingSession() {
     resumeFromStep,
     aiLifecycleTick,
     getStepTimeline,
+    startNewProblem,
   } = useLiveSession();
 
   const { 
@@ -96,8 +98,9 @@ export function TeachingSession() {
 
   const animatedStepId = hoverStepId ?? activeStepId ?? null;
   const hoverLabel = hoverStep
-    ? `Step ${hoverStep.index + 1} \u2013 ${hoverStep.type}`
+    ? `Step ${hoverStep.uiIndex} \u2013 ${hoverStep.type}`
     : null;
+  const visibleSteps = equationSteps.filter((step) => step.runId === currentProblemId);
 
   useEffect(() => {
     return () => {
@@ -111,7 +114,30 @@ export function TeachingSession() {
 
   return (
     <div style={{ padding: 24 }}>
-      <h2>Live AI Math Teacher</h2>
+      {/* <h2>Live AI Math Teacher</h2> */}
+      <div
+        style={{
+          display: "flex",
+          justifyContent: "space-between",
+          alignItems: "center",
+        }}
+      >
+        <h2>Live AI Math Teacher</h2>
+        <button
+          onClick={startNewProblem}
+          style={{
+            marginLeft: "1rem",
+            background: "#ef4444",
+            color: "white",
+            border: "none",
+            padding: "8px 12px",
+            borderRadius: "6px",
+            cursor: "pointer",
+          }}
+        >
+          Clear & New Problem
+        </button>
+      </div>
       {audioState === "playing" && (
         <>
           <p style={{ opacity: 0.7 }}>🔊 Teacher is speaking…</p>
@@ -147,12 +173,21 @@ export function TeachingSession() {
           </div>
         )}
         {chat.length > 0 && (
-          <div style={{ marginTop: 12, display: "flex", flexDirection: "column", gap: 10 }}>
+          <div
+            style={{
+              marginTop: 12,
+              display: "flex",
+              flexDirection: "column",
+              gap: 10,
+            }}
+          >
             {chat.map((message) => (
               <div
                 key={message.id}
                 style={{
-                  alignSelf: message.role === "student" ? "flex-end" : "flex-start",
+                  alignSelf:
+                    message.role === "student" ? "flex-end" : "flex-start",
+                  textAlign: message.role === "student" ? "right" : "left",
                   maxWidth: "75%",
                   padding: "10px 12px",
                   borderRadius: 14,
@@ -160,7 +195,9 @@ export function TeachingSession() {
                   whiteSpace: "pre-wrap",
                   wordBreak: "break-word",
                   background:
-                    message.role === "student" ? "rgba(37, 99, 235, 0.12)" : "rgba(15, 23, 42, 0.06)",
+                    message.role === "student"
+                      ? "rgba(37, 99, 235, 0.12)"
+                      : "rgba(15, 23, 42, 0.06)",
                   border:
                     message.role === "student"
                       ? "1px solid rgba(37, 99, 235, 0.25)"
@@ -173,9 +210,9 @@ export function TeachingSession() {
             ))}
           </div>
         )}
-        {equationSteps && (
+        {visibleSteps && (
           <EquationSteps
-            steps={equationSteps}
+            steps={visibleSteps}
             activeStepId={activeStepId}
             onReExplain={reExplainStep}
             previewStepId={previewStepId}
