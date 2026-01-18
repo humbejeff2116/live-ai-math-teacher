@@ -51,6 +51,9 @@ export type ClientToServerMessage =
         source: ResumeFromStepSource;
       };
     }
+  | {
+      type: "reset_session";
+    };
 
 export type ServerToClientMessage =
   | TeacherSignal
@@ -58,6 +61,7 @@ export type ServerToClientMessage =
       type: "ai_audio_chunk";
       payload: {
         audioBase64: string;
+        stepId: string; // Include stepId in the message to the client
       };
     }
   | {
