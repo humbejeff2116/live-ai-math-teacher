@@ -1,8 +1,9 @@
 import WebSocket, { WebSocketServer } from "ws";
-import { liveSocketHandler } from "./liveSocketHandler";
+import { liveSocketHandler } from "./liveSocketHandler.js";
+import type http from "node:http";
 
-export function startWebSocketServer(server: any) {
-  const wss = new WebSocketServer({ server });
+export function startWebSocketServer(server: http.Server) {
+  const wss = new WebSocketServer({ server, path: "/ws" });
 
   wss.on("connection", (ws) => {
     console.log("WS client connected");
@@ -17,5 +18,6 @@ export function startWebSocketServer(server: any) {
       console.error("WS error:", err);
     });
   });
-  console.log("WebSocket server initialized");
+
+  console.log("WebSocket server initialized on /ws");
 }
