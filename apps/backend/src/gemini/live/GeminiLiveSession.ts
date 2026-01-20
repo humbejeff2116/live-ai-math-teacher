@@ -5,15 +5,17 @@ import {
   TeacherState,
   EquationStep,
 } from "@shared/types";
-import { GeminiLiveAudioClient } from "./GeminiLiveAudioClient";
-import { StreamingStepExtractor } from "../StreamingStepExtractor";
-import { buildFreshPrompt, buildResumePrompt } from "../prompts";
-import { resolveConfusedStep, resolveStepFromText } from "../stepResolution";
-import { GeminiLiveStreamingClient } from "../streaming/GeminiLiveStreamingClient";
-import { GeminiStreamingClient } from "../streaming/GeminiStreamingClient";
-import { AudioClock } from "./AudioClock";
-import { StepAudioTracker } from "./StepAudioTracker";
+import { GeminiLiveAudioClient } from "./GeminiLiveAudioClient.js";
+import { StreamingStepExtractor } from "../StreamingStepExtractor.js";
+import { buildFreshPrompt, buildResumePrompt } from "../prompts/index.js";
+// import { resolveConfusedStep, resolveStepFromText } from "../stepResolution/index.js";
+import { GeminiLiveStreamingClient } from "../streaming/GeminiLiveStreamingClient.js";
+import { GeminiStreamingClient } from "../streaming/GeminiStreamingClient.js";
+import { AudioClock } from "./AudioClock.js";
+import { StepAudioTracker } from "./StepAudioTracker.js";
 import { randomUUID } from "node:crypto";
+import { resolveConfusedStep } from "../stepResolution/confusionResolver.js";
+import { resolveStepFromText } from "../stepResolution/stepIntentResolver.js";
 
 const DEBUG_EQUATION_STEPS = true;
 
