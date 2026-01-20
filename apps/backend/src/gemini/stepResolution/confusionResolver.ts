@@ -1,5 +1,5 @@
 import { EquationStep } from "@shared/types";
-import { resolveStepFromText } from "./stepIntentResolver";
+import { resolveStepFromText } from "./stepIntentResolver.js";
 
 export function resolveConfusedStep(
   text: string,

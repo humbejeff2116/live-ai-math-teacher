@@ -1,5 +1,5 @@
 import WebSocket from "ws";
-import { GeminiLiveSession } from "../gemini/live/GeminiLiveSession";
+import { GeminiLiveSession } from "../gemini/live/GeminiLiveSession.js";
 import { ClientToServerMessage } from "@shared/types";
 
 export function liveSocketHandler(ws: WebSocket) {

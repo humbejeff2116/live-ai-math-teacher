@@ -1,5 +1,5 @@
 import { StepAudioTiming } from "@shared/types";
-import { AudioClock } from "./AudioClock";
+import { AudioClock } from "./AudioClock.js";
 // import { StepAudioTiming } from "../types/StepAudioMetadata";
 
 export class StepAudioTracker {

@@ -1,5 +1,5 @@
-import { geminiClient } from "../client/client";
-import { geminiLiveConfig } from "./liveConfig";
+import { geminiClient } from "../client/client.js";
+import { geminiLiveConfig } from "./liveConfig.js";
 
 type StreamGenerateArgs = {
   model: string;

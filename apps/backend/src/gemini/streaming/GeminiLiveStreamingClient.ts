@@ -1,8 +1,8 @@
 import {
   GeminiStreamingClient,
   GeminiStreamChunk,
-} from "./GeminiStreamingClient";
-import { GeminiLiveClient } from "../live/GeminiLiveClient";
+} from "./GeminiStreamingClient.js";
+import { GeminiLiveClient } from "../live/GeminiLiveClient.js";
 
 export class GeminiLiveStreamingClient implements GeminiStreamingClient {
   private client = new GeminiLiveClient();
