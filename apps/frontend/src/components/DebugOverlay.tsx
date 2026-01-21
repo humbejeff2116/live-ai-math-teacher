@@ -1,10 +1,11 @@
 import { useEffect, useState } from "react";
 import { useDebugState } from "../state/debugState";
-import { useWebSocketState } from "../state/weSocketState";
+// import { useWebSocketState } from "../state/weSocketState";
+import { AlarmClock, ArrowDown01, Brain, CircleOff, Diff, Equal, MessageSquareText, Zap } from "lucide-react";
 
 
 export function DebugOverlay() {
-  const { reconnect } = useWebSocketState()!;
+  // const { reconnect } = useWebSocketState()!;
   const { state } = useDebugState();
   const [uptime, setUptime] = useState("0s");
   const [collapsed, setCollapsed] = useState(false);
@@ -40,16 +41,17 @@ export function DebugOverlay() {
     <div
       style={{
         padding: "1rem",
-        border: "1px solid #ccc",
+        // border: "1px solid #ccc",
         borderRadius: "8px",
         position: "fixed",
         top: 16,
         right: 16,
         width: 280,
-        background: "rgba(0,0,0,0.85)",
-        color: "#fff",
-        // padding: 12,
-        // borderRadius: 8,
+        background: "#ffffff",
+        color: "#000",
+        textAlign: "left",
+        boxShadow: "0 4px 12px rgba(0, 0, 0, 0.15)",
+
         fontSize: 13,
         zIndex: 9999,
       }}
@@ -68,7 +70,7 @@ export function DebugOverlay() {
           onClick={() => setCollapsed((c) => !c)}
           style={{
             background: "transparent",
-            color: "#fff",
+            color: "#555",
             border: "1px solid #555",
             borderRadius: 4,
             padding: "2px 8px",
@@ -81,50 +83,120 @@ export function DebugOverlay() {
       </div>
 
       {!collapsed && (
-        <>
-          <p>
-            Status:
-            <span style={{ color: state.connected ? "green" : "red" }}>
-              {state.connected ? " ● Connected" : " ○ Disconnected"}
-            </span>
-          </p>
-
-          <button
-            onClick={reconnect}
+        <div>
+          <p
             style={{
-              marginTop: "8px",
-              padding: "4px 12px",
-              cursor: "pointer",
-              backgroundColor: "#007bff",
-              color: "white",
-              border: "none",
-              borderRadius: "4px",
+              paddingTop: "5px",
+              display: "flex",
+              alignItems: "center",
+              gap: "4px",
+              borderBottom: "1px solid #eee",
+              paddingBottom: "5px",
             }}
           >
-            Force Reconnect
-          </button>
-
-          <hr />
-
-          <p>⏱ Uptime: {uptime}</p>
-          <p>💬 AI Messages: {state.aiMessageCount}</p>
-          <p>🛑 Interrupted: {state.interruptedCount}</p>
-          <p>⚡ Latency: {state.lastLatencyMs}ms</p>
+            <AlarmClock size={18} />
+            Uptime: {uptime}
+          </p>
+          <p
+            style={{
+              paddingTop: "5px",
+              display: "flex",
+              alignItems: "center",
+              gap: "4px",
+              borderBottom: "1px solid #eee",
+              paddingBottom: "5px",
+            }}
+          >
+            <MessageSquareText size={18} />
+            AI Messages: {state.aiMessageCount}
+          </p>
+          <p
+            style={{
+              paddingTop: "5px",
+              display: "flex",
+              alignItems: "center",
+              gap: "4px",
+              borderBottom: "1px solid #eee",
+              paddingBottom: "5px",
+            }}
+          >
+            <CircleOff size={18} />
+            Interrupted: {state.interruptedCount}
+          </p>
+          <p
+            style={{
+              paddingTop: "5px",
+              display: "flex",
+              alignItems: "center",
+              gap: "4px",
+              borderBottom: "1px solid #eee",
+              paddingBottom: "5px",
+            }}
+          >
+            <Zap size={18} />
+            Latency: {state.lastLatencyMs}ms
+          </p>
 
           {state.lastEquationStep && (
             <>
               <hr />
-              <p>
-                <strong>📐 Last Equation Step</strong>
+              <p
+                style={{
+                  paddingTop: "5px",
+                  display: "flex",
+                  alignItems: "center",
+                  gap: "4px",
+                  borderBottom: "1px solid #eee",
+                  paddingBottom: "5px",
+                }}
+              >
+                <strong>
+                  <Diff size={18} />
+                  Last Equation Step
+                </strong>
               </p>
-              <p>Index: {state.lastEquationStep.index + 1}</p>
-              <p>Type: {state.lastEquationStep.type}</p>
-              <p style={{ opacity: 0.8 }}>{state.lastEquationStep.type}</p>
-              {/* <p>📘 Active Step: {state.activeStepId ?? "None"}</p> */}
-              <p>🧠 Confusion Detected: {state.confusionCount ?? 0}</p>
+              <p
+                style={{
+                  paddingTop: "5px",
+                  display: "flex",
+                  alignItems: "center",
+                  gap: "4px",
+                  borderBottom: "1px solid #eee",
+                  paddingBottom: "5px",
+                }}
+              >
+                <ArrowDown01 size={18} />
+                Index: {state.lastEquationStep.index + 1}
+              </p>
+              <p
+                style={{
+                  paddingTop: "5px",
+                  display: "flex",
+                  alignItems: "center",
+                  gap: "4px",
+                  borderBottom: "1px solid #eee",
+                  paddingBottom: "5px",
+                }}
+              >
+                <Equal size={18} />
+                Type: {state.lastEquationStep.type}
+              </p>
+              <p
+                style={{
+                  paddingTop: "4px",
+                  display: "flex",
+                  alignItems: "center",
+                  gap: "4px",
+                  borderBottom: "1px solid #eee",
+                  paddingBottom: "4px",
+                }}
+              >
+                <Brain size={18} />
+                Confusion Detected: {state.confusionCount ?? 0}
+              </p>
             </>
           )}
-        </>
+        </div>
       )}
     </div>
   );
