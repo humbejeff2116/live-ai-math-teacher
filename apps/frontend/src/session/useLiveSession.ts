@@ -20,8 +20,8 @@ export function useLiveSession() {
     currentProblemId,
     teacherState,
     aiLifecycleTick,
-    problemIdRef,
-    setCurrentProblemId,
+    currentProblemIdRef,
+    setProblemId,
     setChat,
     setEquationSteps,
     handleMessage,
@@ -47,8 +47,10 @@ export function useLiveSession() {
   }, []);
 
     const startNewProblem = useCallback(() => {
-      problemIdRef.current += 1;
-      setCurrentProblemId(problemIdRef.current);
+      setProblemId(
+        currentProblemIdRef.current + 1,
+        "manual_start_new_problem"
+      );
 
       // Clear the chat and steps locally
       setChat([]);
@@ -58,7 +60,7 @@ export function useLiveSession() {
       wsClientRef.current?.send({
         type: "reset_session", // You'll need to handle this type on the server
       });
-    }, [problemIdRef, setChat, setCurrentProblemId, setEquationSteps, wsClientRef]);
+    }, [currentProblemIdRef, setChat, setEquationSteps, setProblemId, wsClientRef]);
   
 
   function sendUserMessage(text: string) {
@@ -168,10 +170,21 @@ export function useHandleMessage(
   const [currentProblemId, setCurrentProblemId] = useState(0);
   const { setState: setDebugState } = useDebugState();
   const bufferRef = useRef("");
-  const problemIdRef = useRef(0);
+  const currentProblemIdRef = useRef(0);
   const { interrupt: interruptTTS } = useTTS();
   const { playChunk } = useLiveAudio();
   const [teacherState, dispatchTeacher] = useTeacherState();
+
+  const setProblemId = useCallback(
+    (nextId: number, reason: string) => {
+      currentProblemIdRef.current = nextId;
+      setCurrentProblemId(nextId);
+      if (DEBUG_EQUATION_STEPS) {
+        console.log("[problem_id]", { nextId, reason });
+      }
+    },
+    [DEBUG_EQUATION_STEPS, setCurrentProblemId]
+  );
 
   const appendStudentMessage = useCallback((text: string) => {
     const createdAtMs = Date.now();
@@ -194,11 +207,9 @@ export function useHandleMessage(
     const hasEquation = trimmed.includes("=");
 
     if (isCommand && hasEquation) {
-      problemIdRef.current += 1;
-      setCurrentProblemId(problemIdRef.current);
-      setEquationSteps([]); // Clear for the new problem
+      setProblemId(currentProblemIdRef.current + 1, "auto_detect");
     }
-  }, []);
+  }, [currentProblemIdRef, setProblemId]);
 
   const handleMessage = useCallback(
     (message: ServerToClientMessage) => {
@@ -252,18 +263,17 @@ export function useHandleMessage(
 
       if (message.type === "equation_step") {
         lastStepIndexRef.current = message.payload.index;
-        
-        if (DEBUG_EQUATION_STEPS) {     
-          console.log("[equation_step recv]", {
-            id: message.payload.id,
-            index: message.payload.index,
-            equation: message.payload.equation,
-            runId: problemIdRef.current,
-          });
-        }
 
         setEquationSteps((prev) => {
-          const runId = problemIdRef.current;
+          const runId = currentProblemIdRef.current;
+          if (DEBUG_EQUATION_STEPS) {
+            console.log("[equation_step recv]", {
+              id: message.payload.id,
+              index: message.payload.index,
+              equation: message.payload.equation,
+              runId,
+            });
+          }
           const alreadyInRun = prev.filter((s) => s.runId === runId);
           const exists = alreadyInRun.some((s) => s.id === message.payload.id);
           if (exists) return prev;
@@ -343,8 +353,8 @@ export function useHandleMessage(
     streamingText,
     equationSteps,
     currentProblemId,
-    problemIdRef,
-    setCurrentProblemId,
+    currentProblemIdRef,
+    setProblemId,
     setChat,
     setEquationSteps,
     handleMessage,
