@@ -1,4 +1,6 @@
 import { useEffect, useRef, useState } from "react";
+// import { AstridAvatar } from "../astrid/AstridAvatar";
+import { Bot } from "lucide-react";
 
 type ConnectionStatusProps = {
   status: "connected" | "disconnected" | "reconnecting";
@@ -49,17 +51,8 @@ export function ConnectionStatus({ status, onReconnect }: ConnectionStatusProps)
         onClick={() => setOpen((prev) => !prev)}
         className="relative flex items-center gap-2 rounded-full border border-slate-200 bg-white px-3 py-1.5 text-sm font-medium text-slate-700 shadow-sm transition hover:bg-slate-50"
       >
-        <span className="relative flex h-8 w-8 items-center justify-center rounded-full bg-slate-900 text-white">
-          <svg
-            viewBox="0 0 24 24"
-            className="h-4 w-4"
-            fill="none"
-            stroke="currentColor"
-            strokeWidth="1.6"
-          >
-            <rect x="5" y="4" width="14" height="12" rx="2" />
-            <path d="M9 16v2m6-2v2M8 9h1m6 0h1" />
-          </svg>
+        <span className="relative flex h-8 w-8 items-center justify-center rounded-full text-brand bg-slate-100">
+          <Bot size={18} />
           <span
             className={`absolute -right-0.5 -top-0.5 h-2.5 w-2.5 rounded-full border border-white ${STATUS_COLOR[status]}`}
           />
