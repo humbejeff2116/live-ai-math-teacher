@@ -47,11 +47,11 @@ export class LiveWSClient {
     this.socket.send(JSON.stringify(message));
   }
 
-  close() {
-    if (!this.socket) return;
+  // close() {
+  //   if (!this.socket) return;
 
-    this.send({ type: "close" });
-    this.socket.close();
-    this.socket = null;
-  }
+  //   this.send({ type: "close" });
+  //   this.socket.close();
+  //   this.socket = null;
+  // }
 }
