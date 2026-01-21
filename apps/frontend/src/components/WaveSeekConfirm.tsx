@@ -84,10 +84,34 @@ export function WaveSeekConfirm({
           ref={confirmButtonRef}
           onClick={handleConfirm}
           disabled={isConfirming}
+          style={{
+            flex: 1,
+            padding: "6px 0",
+            borderRadius: 6,
+            background: isConfirming ? "rgba(99,102,241,0.2)" : "#6366f1",
+            color: "white",
+            fontWeight: 600,
+            border: "none",
+            cursor: isConfirming ? "not-allowed" : "pointer",
+          }}
         >
           Resume here
         </button>
-        <button onClick={onCancel}>Cancel</button>
+        <button 
+        onClick={onCancel} 
+        style={{ 
+          flex: 1, 
+          padding: "6px 0", 
+          borderRadius: 6, 
+          background: "#e2e8f0", 
+          color: "#1e293b", 
+          fontWeight: 600, 
+          border: "none", 
+          cursor: "pointer" 
+        }}  
+        >
+          Cancel
+        </button>
       </div>
     </div>
   );
