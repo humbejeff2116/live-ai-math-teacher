@@ -1,4 +1,6 @@
 import { useEffect, useState } from "react";
+import { DebugToggle } from "../DebugToggle";
+import { Settings } from "lucide-react";
 
 const STORAGE_KEY = "quickSettingsOpen";
 
@@ -20,8 +22,9 @@ export function QuickSettings() {
     <div className="flex h-full flex-col rounded-xl border border-slate-200 bg-white shadow-sm">
       <div className="flex items-center justify-between border-b border-slate-200 px-4 py-3">
         <div>
-          <div className="text-sm font-semibold text-slate-700">
-            Quick Settings
+          <div className="flex items-center gap-2 text-sm font-semibold text-slate-700">
+            <Settings size={18} />
+            <span>Quick Settings</span>
           </div>
           <div className="text-xs text-slate-400">Visual only</div>
         </div>
@@ -35,7 +38,7 @@ export function QuickSettings() {
       </div>
 
       {open && (
-        <div className="flex flex-1 flex-col gap-4 px-4 py-4">
+        <div className="flex flex-1 flex-col gap-4 px-4 py-4 text">
           <label className="text-xs font-semibold text-slate-600">
             Teaching style
             <select
@@ -76,6 +79,17 @@ export function QuickSettings() {
               <span className="absolute left-1 h-4 w-4 rounded-full bg-white transition peer-checked:translate-x-5" />
             </span>
           </label>
+
+          <label className="text-xs font-semibold text-slate-600">
+            Additional notes
+            <textarea
+              placeholder="E.g., focus on word problems, use more examples, etc."
+              className="mt-2 w-full rounded-md border border-slate-200 bg-white px-3 py-2 text-sm text-slate-700 shadow-sm focus:border-slate-300 focus:outline-none"
+              rows={3}
+            />
+          </label>
+
+          <DebugToggle />
         </div>
       )}
     </div>
