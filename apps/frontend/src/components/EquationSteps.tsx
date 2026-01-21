@@ -10,7 +10,7 @@ type EquationStepsProps = {
   pendingStepId?: string;
   pendingStepLabel?: string;
   onReExplain: (id: string, style?: ReexplanStyle) => void;
-  onStepClick?: (id: string) => void;
+  onStepClick?: (id: string, rect: DOMRect) => void;
   showHeader?: boolean;
 };
 
@@ -56,7 +56,10 @@ export function EquationSteps({
           <Fragment key={step.id}>
             <div
               id={`step-${step.id}`}
-              onClick={() => onStepClick?.(step.id)}
+              onClick={(event) => {
+                const rect = event.currentTarget.getBoundingClientRect();
+                onStepClick?.(step.id, rect);
+              }}
               style={{
                 padding: 10,
                 borderRadius: 10,
@@ -114,10 +117,34 @@ export function EquationSteps({
               <div style={{ opacity: 0.8 }}>{step.text}</div>
 
               <div style={{ marginTop: 6 }}>
-                <button onClick={() => onReExplain(step.id, "simpler")}>
+                <button
+                  onClick={(event) => {
+                    event.stopPropagation();
+                    onReExplain(step.id, "simpler");
+                  }}
+                  style={{
+                    marginRight: 8,
+                    color: "#2563eb",
+                    padding: "4px 8px",
+                    borderRadius: 6,
+                    fontWeight: 600,
+                    cursor: "pointer",
+                    border: "1px solid #2563eb",
+                    background: "white",
+                  }}
+                >
                   Explain again
                 </button>
-                <button onClick={() => onReExplain(step.id, "example")}>
+                <button
+                  onClick={(event) => {
+                    event.stopPropagation();
+                    onReExplain(step.id, "example");
+                  }}
+                  style={{
+                    color: "#2563eb",
+                    cursor: "pointer",
+                  }}
+                >
                   With example
                 </button>
               </div>
