@@ -1,0 +1,35 @@
+steps:
+  # Build Docker image
+  - name: gcr.io/cloud-builders/docker
+    args:
+      [
+        "build",
+        "-t",
+        "${_IMAGE}",
+        "."
+      ]
+
+  # Push to Artifact Registry
+  - name: gcr.io/cloud-builders/docker
+    args:
+      ["push", "${_IMAGE}"]
+
+  # Deploy to Cloud Run
+  - name: gcr.io/google.com/cloudsdktool/cloud-sdk
+    entrypoint: bash
+    args:
+      - -c
+      - |
+        sed "s|IMAGE_PLACEHOLDER|${_IMAGE}|g" run.yaml > run.rendered.yaml
+        gcloud run services replace run.rendered.yaml --region ${_REGION}
+
+substitutions:
+  _REGION: europe-west1
+  _SERVICE: solveai
+  _REPO: solveai
+  _IMAGE: europe-west1-docker.pkg.dev/$PROJECT_ID/${_REPO}/${_SERVICE}:$SHORT_SHA
+
+images:
+  - "${_IMAGE}"
+# timeout: "1200s"
+
