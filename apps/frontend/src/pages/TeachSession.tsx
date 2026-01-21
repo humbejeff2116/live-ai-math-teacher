@@ -132,6 +132,7 @@ export function TeachingSession() {
       <SessionShell
         topBar={
           <TopBar
+            teacherState={teacherState}
             teacherLabel={TEACHER_LABEL[teacherState]}
             status={connectionStatus}
             onReconnect={reconnect}
@@ -169,23 +170,35 @@ export function TeachingSession() {
             animatedStepId={animatedStepId}
             pendingStepId={pendingSeek?.stepId}
             onReExplain={reExplainStep}
-            onStepClick={(stepId) => {
+            onStepClick={(stepId, rect) => {
               const step = stepById.get(stepId);
               if (!step) return;
               if (activeStepId && stepId === activeStepId) {
                 setPendingSeek(null);
                 return;
               }
+              const preferredX = rect.right + 12;
+              const preferredY = rect.top + rect.height / 2;
+              const x = Math.min(preferredX, window.innerWidth - 320);
+              const y = Math.min(
+                Math.max(preferredY, 80),
+                window.innerHeight - 180,
+              );
               handleSetPendingSeekByStep({
                 stepId,
-                clientX: window.innerWidth - 260,
-                clientY: 120,
+                clientX: x,
+                clientY: y,
               });
             }}
           />
         }
         conversation={
-          <ConversationPanel chat={chat} streamingText={streamingText} />
+          <ConversationPanel
+            chat={chat}
+            streamingText={streamingText}
+            teacherState={teacherState}
+            status={connectionStatus}
+          />
         }
         quickSettings={<QuickSettings />}
         inputBar={
