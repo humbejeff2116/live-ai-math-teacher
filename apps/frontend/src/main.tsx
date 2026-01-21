@@ -1,18 +1,20 @@
 import { StrictMode } from 'react'
 import { createRoot } from 'react-dom/client'
 import './index.css'
-import App from './App.tsx'
+import AppRoutes from "./App.tsx";
 import { DebugProvider } from './state/DebugStateProvider.tsx';
 import { WebSocketProvider } from './state/WebSocketStateProvider.tsx';
-// import { ConnectionToast } from './components/ConnectionToast.tsx';
+// import { BrowserRouter as Router } from "react-router-dom";
+import { HashRouter as Router } from "react-router-dom";
 
 createRoot(document.getElementById("root")!).render(
   <StrictMode>
     <DebugProvider>
       <WebSocketProvider>
-        {/* <ConnectionToast /> */}
-        <App />
+        <Router>
+          <AppRoutes />
+        </Router>
       </WebSocketProvider>
     </DebugProvider>
-  </StrictMode>
+  </StrictMode>,
 );

@@ -1,18 +1,20 @@
-import './App.css'
-import { DebugToggle } from './components/DebugToggle';
-import { TTSToggle } from './components/TTSToggle';
+import { Routes, Route, useLocation, Navigate } from "react-router-dom";
+import "./App.css";
 // import { Landing } from './pages/Landing';
-import { TeachingSession } from './pages/TeachSession';
+import { TeachingSession } from "./pages/TeachSession";
+import { Landing } from "./pages/Landing";
+import { routes } from "./routes";
 
-function App() {
+function AppRoutes() {
+  const location = useLocation();
+
   return (
-    <>
-      {/* <Landing /> */}
-      <TeachingSession />
-      <DebugToggle />
-      <TTSToggle/>
-    </>
+    <Routes location={location} key={location.pathname}>
+      <Route path={routes.landing} element={<Landing />} />
+      <Route path={routes.demo} element={<TeachingSession />} />
+      <Route path="*" element={<Navigate to="/" replace />} />
+    </Routes>
   );
 }
 
-export default App;
+export default AppRoutes;
