@@ -1,6 +1,7 @@
-import { useEffect, useEffectEvent, useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import type { EquationStep, ReexplanStyle } from "@shared/types";
 import { EquationSteps } from "../EquationSteps";
+import { Infinity as InfinityLucide } from "lucide-react";
 
 type StepsRailProps = {
   steps: (EquationStep & { uiIndex: number })[];
@@ -9,7 +10,7 @@ type StepsRailProps = {
   hoverStepId: string | null;
   animatedStepId: string | null;
   pendingStepId?: string;
-  onStepClick?: (id: string) => void;
+  onStepClick?: (id: string, rect: DOMRect) => void;
   onReExplain: (id: string, style?: ReexplanStyle) => void;
 };
 
@@ -36,24 +37,24 @@ export function StepsRail({
     return window.localStorage.getItem(TOOLTIP_STORAGE_KEY) === "true";
   }, []);
 
-  const handleTooltipEvent = useEffectEvent((show: boolean) => {
-    window.localStorage.setItem(TOOLTIP_STORAGE_KEY, "true");
-    setShowTooltip(show);
-  });
-
   useEffect(() => {
     if (!hasSteps || tooltipSeen) return;
-    handleTooltipEvent(false);
-    const timeout = window.setTimeout(() => setShowTooltip(false), 5500);
-    return () => window.clearTimeout(timeout);
+    window.localStorage.setItem(TOOLTIP_STORAGE_KEY, "true");
+    Promise.resolve().then(() => setShowTooltip(true));
+    const timeout = window.setTimeout(() => setShowTooltip(false), 10500);
+    return () => {
+      window.clearTimeout(timeout);
+      window.localStorage.removeItem(TOOLTIP_STORAGE_KEY);
+    }
   }, [hasSteps, tooltipSeen]);
 
   return (
     <div className="relative h-full lg:sticky lg:top-24">
-      <div className="flex h-full flex-col rounded-xl border border-slate-200 bg-white shadow-sm">
-        <div className="sticky top-0 z-10 flex items-center justify-between rounded-t-lg border-b border-slate-200  px-4 py-3">
-          <div className="text-sm font-semibold text-slate-700">
-            Equation Steps
+      <div className="relative flex h-full min-h-0 flex-col rounded-xl border border-slate-200 bg-white shadow-sm">
+        <div className="sticky top-0 z-10 flex items-center justify-between rounded-t-lg border-b border-slate-200 px-4 py-3">
+          <div className="flex items-center gap-2 text-sm font-semibold text-slate-700">
+            <InfinityLucide size={20} />
+            <span>Equation Steps</span>
           </div>
           <button
             type="button"
@@ -71,7 +72,7 @@ export function StepsRail({
         )}
 
         <div
-          className={`flex-1 overflow-y-auto px-3 py-3 ${
+          className={`min-h-0 flex-1 overflow-y-auto px-3 py-3 ${
             collapsed ? "hidden lg:block" : "block"
           }`}
         >
