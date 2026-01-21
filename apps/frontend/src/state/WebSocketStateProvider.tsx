@@ -3,6 +3,7 @@ import { WebSocketContext } from "./weSocketState";
 import { LiveWSClient } from "../transport/wsClient";
 import { useDebugState } from "./debugState";
 import type { ServerToClientMessage } from "@shared/types";
+import { buildWsUrl } from "@/transport/wsUrl";
 
 
 export function WebSocketProvider({ children }: { children: React.ReactNode }) {
@@ -46,17 +47,22 @@ export function WebSocketProvider({ children }: { children: React.ReactNode }) {
 
       client.onClose = () => {
         if (!isComponentMounted) return;
-        setDebugState((s) => ({ ...s, connected: false, isReconnecting: true }));
+        setDebugState((s) => ({
+          ...s,
+          connected: false,
+          isReconnecting: true,
+        }));
 
-        // Exponential backoff: 1s, 2s, 4s, 8s, maxing at 30s
-        const delay = Math.min(1000 * Math.pow(2, reconnectCount), 30000);
+        const next = reconnectCount + 1;
+        const delay = Math.min(1000 * Math.pow(2, next - 1), 30000);
 
         reconnectTimerRef.current = setTimeout(() => {
-          setReconnectCount((prev) => prev + 1);
+          setReconnectCount(next);
         }, delay);
       };
 
-      client.connect("ws://localhost:3001");
+
+      client.connect(buildWsUrl());
       wsClientRef.current = client;
     };
 
@@ -65,7 +71,7 @@ export function WebSocketProvider({ children }: { children: React.ReactNode }) {
     return () => {
       isComponentMounted = false;
       if (reconnectTimerRef.current) clearTimeout(reconnectTimerRef.current);
-      wsClientRef.current?.close();
+      // wsClientRef.current?.close();
       wsClientRef.current = null;
     };
     // Re-run this effect only when reconnectCount changes
@@ -76,7 +82,7 @@ export function WebSocketProvider({ children }: { children: React.ReactNode }) {
     if (reconnectTimerRef.current) clearTimeout(reconnectTimerRef.current);
 
     // Close existing connection
-    wsClientRef.current?.close();
+    // wsClientRef.current?.close();
 
     // Increment count to trigger the useEffect
     setReconnectCount((prev) => prev + 1);
