@@ -11,7 +11,10 @@ export function useLiveSession() {
   const sendTimeRef = useRef<number | null>(null);
   const { wsClientRef, subscribe } = useWebSocketState();
   const lastStepIndexRef = useRef<number | null>(null);
-  const stepTimelineRef = useRef(new AudioStepTimeline());
+  const stepTimelineRef = useRef(new AudioStepTimeline({ sampleRate: 24000 }));
+
+
+  const liveAudio = useLiveAudio(stepTimelineRef);
 
   const {
     chat,
@@ -27,7 +30,9 @@ export function useLiveSession() {
     handleMessage,
     appendStudentMessage,
     maybeStartNewProblemFromStudentText,
-  } = useHandleMessage(stepTimelineRef, sendTimeRef, lastStepIndexRef);
+  } = useHandleMessage(stepTimelineRef, sendTimeRef, lastStepIndexRef, liveAudio.playChunk);
+
+  
 
   useEffect(() => {
     const unsubscribe = subscribe((msg) => {
@@ -146,6 +151,7 @@ export function useLiveSession() {
     aiLifecycleTick,
     getStepTimeline: () => stepTimelineRef.current,
     startNewProblem,
+    liveAudio,
   };
 }
 
@@ -160,7 +166,8 @@ export function useLiveSession() {
 export function useHandleMessage(
   stepTimelineRef: React.RefObject<AudioStepTimeline>,
   sendTimeRef: React.RefObject<number | null>,
-  lastStepIndexRef: React.RefObject<number | null>
+  lastStepIndexRef: React.RefObject<number | null>,
+  playChunk: (b64: string, stepId?: string, mimeType?: string) => void,
 ) {
   const DEBUG_EQUATION_STEPS = true;
   const [chat, setChat] = useState<ChatMessage[]>([]);
@@ -172,7 +179,7 @@ export function useHandleMessage(
   const bufferRef = useRef("");
   const currentProblemIdRef = useRef(0);
   const { interrupt: interruptTTS } = useTTS();
-  const { playChunk } = useLiveAudio();
+
   const [teacherState, dispatchTeacher] = useTeacherState();
 
   const setProblemId = useCallback(
@@ -183,7 +190,7 @@ export function useHandleMessage(
         console.log("[problem_id]", { nextId, reason });
       }
     },
-    [DEBUG_EQUATION_STEPS, setCurrentProblemId]
+    [DEBUG_EQUATION_STEPS, setCurrentProblemId],
   );
 
   const appendStudentMessage = useCallback((text: string) => {
@@ -199,17 +206,20 @@ export function useHandleMessage(
     ]);
   }, []);
 
-  const maybeStartNewProblemFromStudentText = useCallback((text: string) => {
-    const trimmed = text.toLowerCase().trim();
-    // Only trigger if it looks like a command AND contains an equation
-    const isCommand =
-      trimmed.startsWith("solve") || trimmed.startsWith("calculate");
-    const hasEquation = trimmed.includes("=");
+  const maybeStartNewProblemFromStudentText = useCallback(
+    (text: string) => {
+      const trimmed = text.toLowerCase().trim();
+      // Only trigger if it looks like a command AND contains an equation
+      const isCommand =
+        trimmed.startsWith("solve") || trimmed.startsWith("calculate");
+      const hasEquation = trimmed.includes("=");
 
-    if (isCommand && hasEquation) {
-      setProblemId(currentProblemIdRef.current + 1, "auto_detect");
-    }
-  }, [currentProblemIdRef, setProblemId]);
+      if (isCommand && hasEquation) {
+        setProblemId(currentProblemIdRef.current + 1, "auto_detect");
+      }
+    },
+    [currentProblemIdRef, setProblemId],
+  );
 
   const handleMessage = useCallback(
     (message: ServerToClientMessage) => {
@@ -241,18 +251,20 @@ export function useHandleMessage(
           confusionCount: (s.confusionCount ?? 0) + 1,
         }));
       }
-
+      //Keep them (step_audio_start / step_audio_end) for debugging if you want,
+      // but don't rely on them for active step.
+      //they can create overlapping ranges if mixed.
       if (message.type === "step_audio_start") {
         stepTimelineRef.current.onStepStart(
           message.payload.stepId,
-          message.payload.atMs
+          message.payload.atMs,
         );
       }
 
       if (message.type === "step_audio_end") {
         stepTimelineRef.current.onStepEnd(
           message.payload.stepId,
-          message.payload.atMs
+          message.payload.atMs,
         );
       }
 
@@ -308,8 +320,15 @@ export function useHandleMessage(
       }
 
       if (message.type === "ai_audio_chunk") {
-        console.log("Received AI audio chunk for step:", message.payload.stepId);
-        playChunk(message.payload.audioBase64, message.payload.stepId);
+        console.log(
+          "Received AI audio chunk for step:",
+          message.payload.stepId,
+        );
+        playChunk(
+          message.payload.audioBase64,
+          message.payload.stepId,
+          message.payload.audioMimeType,
+        );
       }
 
       if (message.type === "ai_message_chunk") {
@@ -345,7 +364,7 @@ export function useHandleMessage(
         // speak(message.payload.text);
       }
     },
-    [dispatchTeacher, setDebugState, sendTimeRef, stepTimelineRef, lastStepIndexRef, DEBUG_EQUATION_STEPS, interruptTTS, playChunk]
+    [dispatchTeacher, setDebugState, sendTimeRef, stepTimelineRef, lastStepIndexRef, DEBUG_EQUATION_STEPS, interruptTTS, playChunk],
   );
 
   return {
