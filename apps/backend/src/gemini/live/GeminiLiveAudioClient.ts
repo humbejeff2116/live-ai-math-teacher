@@ -1,9 +1,8 @@
+// GeminiLiveAudioClient.ts
 import WebSocket from "ws";
 import { env } from "../../config/env.js";
 
-
 type StepAudioHooks = {
-  // stepId: string | null;
   onStepStart(stepId: string): void;
   onStepEnd(stepId: string): void;
 };
@@ -18,41 +17,41 @@ function buildLiveWsUrl(baseUrl: string, apiKey: string): string {
   if (url.pathname.includes("v1alpha")) {
     url.pathname = url.pathname.replace("v1alpha", "v1beta");
   }
-  if (!url.searchParams.has("key")) {
-    url.searchParams.set("key", apiKey);
-  }
+  if (!url.searchParams.has("key")) url.searchParams.set("key", apiKey);
   return url.toString();
 }
 
-
-/**
- * Low-level Gemini Live audio stream client
- * (Audio-only for now; video later)
- */
 export class GeminiLiveAudioClient {
-  private ws: WebSocket;
+  private ws: WebSocket | null = null;
+
   private active = true;
+
   private readyPromise: Promise<void>;
   private resolveReady: (() => void) | null = null;
   private rejectReady: ((err: Error) => void) | null = null;
-  private setupTimeout: NodeJS.Timeout | null = null;
-  private activeStepId: string | null = null;
-  // Track the resolver for the current speaking task
-  private currentTurnResolver: (() => void) | null = null;
-  private currentTurnDidStart = false;
+
   private stoppedPromise: Promise<void>;
   private resolveStopped: (() => void) | null = null;
+
+  private setupTimeout: NodeJS.Timeout | null = null;
   private setupComplete = false;
   private inboundLogCount = 0;
 
-  constructor(
-    onAudioChunk: (chunk: Buffer, stepId: string | null) => void,
-    private hooks: StepAudioHooks
-  ) {
-    this.ws = new WebSocket(
-      buildLiveWsUrl(env.gemini.liveWsUrl, env.gemini.apiKey)
-    );
+  private activeStepId: string | null = null;
 
+  private currentTurnResolver: (() => void) | null = null;
+  private currentTurnDidStart = false;
+
+  private connecting = false;
+
+  constructor(
+    private onAudioChunk: (
+      chunk: Buffer,
+      stepId: string | null,
+      mimeType?: string,
+    ) => void,
+    private hooks: StepAudioHooks,
+  ) {
     this.readyPromise = new Promise((resolve, reject) => {
       this.resolveReady = resolve;
       this.rejectReady = reject;
@@ -61,6 +60,27 @@ export class GeminiLiveAudioClient {
     this.stoppedPromise = new Promise((resolve) => {
       this.resolveStopped = resolve;
     });
+
+    // Initial connect
+    void this.connect();
+  }
+
+  // ---- NEW: connect/reconnect ----
+  private async connect(): Promise<void> {
+    if (this.connecting) return;
+    this.connecting = true;
+
+    // reset setup state + ready promise
+    this.setupComplete = false;
+    this.inboundLogCount = 0;
+
+    this.readyPromise = new Promise((resolve, reject) => {
+      this.resolveReady = resolve;
+      this.rejectReady = reject;
+    });
+
+    const url = buildLiveWsUrl(env.gemini.liveWsUrl, env.gemini.apiKey);
+    this.ws = new WebSocket(url);
 
     const onOpen = () => {
       console.log("GeminiLiveAudioClient::WS open. Sending setup...");
@@ -74,45 +94,39 @@ export class GeminiLiveAudioClient {
       }, 10000);
     };
 
-    if (this.ws.readyState === WebSocket.OPEN) {
-      onOpen();
-    } else {
-      this.ws.once("open", onOpen);
-      this.ws.once("error", (err) => {
-        console.error("GeminiLiveAudioClient failed to connect:", err);
-        this.clearSetupTimeout();
-        this.rejectReady?.(err);
-      });
-      this.ws.once("close", (code, reason) => {
-        if (!this.setupComplete) {
-          const reasonText = reason?.toString() || "no reason";
-          const err = new Error(
-            `GeminiLiveAudioClient closed before setupComplete (${code}) ${reasonText}`
-          );
-          this.clearSetupTimeout();
-          this.rejectReady?.(err);
-        }
-      });
-    }
+    this.ws.once("open", onOpen);
 
-    this.ws.on("error", (err) => {
-      console.error("GeminiLiveAudioClient::WS error:", err);
+    this.ws.once("error", (err) => {
+      console.error("GeminiLiveAudioClient failed to connect:", err);
       this.clearSetupTimeout();
+      this.rejectReady?.(err);
     });
+
     this.ws.on("close", (code, reason) => {
       const reasonText = reason?.toString() || "no reason";
       console.log(`GeminiLiveAudioClient::WS close (${code}) ${reasonText}`);
-      this.active = false;
-      this.resolveStopped?.();
+
+      // Mark inactive connection, but keep client "active" concept separate
+      this.clearSetupTimeout();
+
+      // resolve any pending turn to avoid deadlocks
       if (this.currentTurnResolver) {
         this.currentTurnResolver();
         this.currentTurnResolver = null;
       }
+
+      // Resolve stopped so waiters can exit, but we will reconnect on demand
+      this.resolveStopped?.();
+
+      // Important: don't keep a dead socket
+      this.ws = null;
+      this.connecting = false;
     });
 
     this.ws.on("message", (data) => {
       try {
         const msg = JSON.parse(data.toString());
+
         if (this.inboundLogCount < 1) {
           const keys = Object.keys(msg).join(", ") || "no keys";
           console.log(`GeminiLiveAudioClient::Inbound message keys: ${keys}`);
@@ -125,43 +139,43 @@ export class GeminiLiveAudioClient {
           console.log("GeminiLiveAudioClient::setupComplete received");
           this.resolveReady?.();
         }
+
         if (msg.error) {
           const errorText =
             typeof msg.error === "string"
               ? msg.error
-              : msg.error?.message ?? JSON.stringify(msg.error);
-          const err = new Error(`GeminiLiveAudioClient server error: ${errorText}`);
-          console.error(err.message);
-          if (!this.setupComplete) {
-            this.clearSetupTimeout();
-            this.rejectReady?.(err);
-          }
+              : (msg.error?.message ?? JSON.stringify(msg.error));
+          console.error(`GeminiLiveAudioClient server error: ${errorText}`);
         }
 
-        // Handle Audio
+        // Audio
         if (msg.serverContent?.modelTurn?.parts) {
           let chunkCount = 0;
           let byteCount = 0;
           for (const part of msg.serverContent.modelTurn.parts) {
             if (part.inlineData?.data) {
               const buffer = Buffer.from(part.inlineData.data, "base64");
+              const mimeType = part.inlineData.mimeType;
               chunkCount += 1;
               byteCount += buffer.length;
-              onAudioChunk(buffer, this.activeStepId);
+              this.onAudioChunk(buffer, this.activeStepId, mimeType);
             }
           }
           if (chunkCount > 0) {
             console.log(
-              `GeminiLiveAudioClient::Audio inlineData received: ${byteCount} bytes (${chunkCount} chunks)`
+              `GeminiLiveAudioClient::Audio inlineData received: ${byteCount} bytes (${chunkCount} chunks)`,
             );
           }
         }
 
-        // Handle Turn Completion
-        if (msg.turnComplete === true || msg.serverContent?.turnComplete === true) {
+        // Turn completion
+        if (
+          msg.turnComplete === true ||
+          msg.serverContent?.turnComplete === true
+        ) {
           console.log(
             "GeminiLiveAudioClient::Turn Complete for step:",
-            this.activeStepId
+            this.activeStepId,
           );
           if (this.currentTurnResolver) {
             this.currentTurnResolver();
@@ -172,91 +186,107 @@ export class GeminiLiveAudioClient {
         console.error("Error parsing Gemini message:", err);
       }
     });
+
+    this.connecting = false;
   }
 
-  // Moved setup to a private method for clarity
   private sendSetup() {
+    if (!this.ws || this.ws.readyState !== WebSocket.OPEN) return;
+
     const setup = {
       setup: {
-        model: "models/gemini-2.0-flash-exp",
+        model: "models/gemini-2.5-flash-native-audio-preview-12-2025",
         generationConfig: {
           responseModalities: ["AUDIO"],
           speechConfig: {
-            voiceConfig: {
-              prebuiltVoiceConfig: { voiceName: "Puck" },
-            },
+            voiceConfig: { prebuiltVoiceConfig: { voiceName: "Puck" } },
           },
         },
       },
     };
+
     this.ws.send(JSON.stringify(setup));
     console.log("GeminiLiveAudioClient::Setup sent");
   }
 
-  async speakStep(stepId: string, text: string): Promise<void> {
-    //TODO... This log occurs
-    console.log(`GeminiLiveAudioClient::Preparing to speak step: ${stepId}`);
+  // ---- NEW: ensureConnected ----
+  private async ensureConnected(): Promise<boolean> {
+    if (!this.active) return false;
 
-    try {
-      const ready = await this.waitForReadyOrStopped();
-      if (!ready) {
-        return;
-      }
-      if (this.active === false) {
-        console.warn(
-          `speakStep[${stepId}] skipped: client is inactive/interrupted`
-        );
-        return;
-      }
-
-      return new Promise((resolve) => {
-        this.activeStepId = stepId;
-        this.currentTurnDidStart = false;
-
-        this.currentTurnResolver = () => {
-          if (this.currentTurnDidStart) {
-            this.hooks.onStepEnd(stepId);
-          }
-          resolve();
-        };
-
-        this.hooks.onStepStart(stepId);
-        this.currentTurnDidStart = true;
-        this.sendTextPrompt(text);
-      });
-    } catch (err) {
-      console.error(
-        `GeminiLiveAudioClient::speakStep failed for ${stepId}:`,
-        err
-      );
+    // If socket missing or not open, reconnect
+    if (!this.ws || this.ws.readyState !== WebSocket.OPEN) {
+      await this.connect();
     }
+
+    // If connect didn't yield an open socket, fail safely
+    if (!this.ws || this.ws.readyState !== WebSocket.OPEN) return false;
+
+    // Wait for setupComplete (or stopped)
+    return await this.waitForReadyOrStopped();
   }
 
-  async sendTextPrompt(text: string) {
-    if (this.active === false || this.ws.readyState !== WebSocket.OPEN) return;
+  async speakStep(stepId: string, text: string): Promise<void> {
+    console.log(`GeminiLiveAudioClient::Preparing to speak step: ${stepId}`);
+
+    const ready = await this.ensureConnected();
+    if (!ready) {
+      console.warn(`speakStep[${stepId}] skipped: not ready/active`);
+      return;
+    }
+
+    return new Promise((resolve) => {
+      this.activeStepId = stepId;
+      this.currentTurnDidStart = false;
+
+      this.currentTurnResolver = () => {
+        if (this.currentTurnDidStart) {
+          this.hooks.onStepEnd(stepId);
+        }
+        resolve();
+      };
+
+      console.log("GeminiLiveAudioClient::ws state", this.ws?.readyState);
+      // IMPORTANT: only start the step AFTER we successfully send the prompt
+      const sent = this.sendTextPrompt(text);
+      if (!sent) {
+        this.currentTurnResolver?.();
+        this.currentTurnResolver = null;
+        return;
+      }
+
+      this.hooks.onStepStart(stepId);
+      this.currentTurnDidStart = true;
+    });
+  }
+
+  private sendTextPrompt(text: string): boolean {
+    if (!this.ws || !this.active || this.ws.readyState !== WebSocket.OPEN) {
+      console.warn(
+        "GeminiLiveAudioClient::sendTextPrompt skipped (ws not open/active=false)",
+      );
+      return false;
+    }
 
     try {
-      // Gemini Multimodal Live API format
       const payload = {
         clientContent: {
           turns: [{ role: "user", parts: [{ text }] }],
-          turnComplete: true, // Tells Gemini to signal when finished
+          turnComplete: true,
         },
       };
+
       this.ws.send(JSON.stringify(payload), (err) => {
-        //TODO... None of these logs occur
-        if (err) {
-          console.error("Error sending text prompt:", err);
-        } else {
-          console.log("GeminiLiveAudioClient::Sent text prompt");
-        }  
+        if (err) console.error("Error sending text prompt:", err);
+        else console.log("GeminiLiveAudioClient::Sent text prompt");
       });
+
+      return true;
     } catch (err) {
       console.error("Error sending text prompt:", err);
+      return false;
     }
   }
 
-  // Critical: If we stop/interrupt, we must resolve any pending promises
   stop() {
     this.active = false;
     this.resolveStopped?.();
@@ -274,7 +304,9 @@ export class GeminiLiveAudioClient {
   }
 
   close() {
-    this.ws.close();
+    try {
+      this.ws?.close();
+    } catch {}
   }
 
   private async waitForReadyOrStopped(): Promise<boolean> {
