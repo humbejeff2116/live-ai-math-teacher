@@ -1,4 +1,4 @@
-import type { EquationStep } from "@shared/types";
+import type { AudioStatus, EquationStep } from "@shared/types";
 import { createContext, useContext } from "react";
 
 export type StepAudioMarker = {
@@ -16,8 +16,9 @@ export type DebugState = {
   interruptedCount: number;
   isReconnecting: boolean;
   lastEquationStep?: EquationStep;
-  // stepAudioRanges: StepAudioRange[];
-  // activeStepId?: string;
+  audioStatus?: AudioStatus;
+  audioStatusReason?: string | null;
+  audioStatusAtMs?: number;
   confusionCount?: number;
 };
 

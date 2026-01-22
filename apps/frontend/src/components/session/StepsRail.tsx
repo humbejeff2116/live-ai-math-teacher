@@ -1,10 +1,11 @@
 import { useEffect, useMemo, useState } from "react";
-import type { EquationStep, ReexplanStyle } from "@shared/types";
+import type { ReexplanStyle } from "@shared/types";
 import { EquationSteps } from "../EquationSteps";
 import { Infinity as InfinityLucide } from "lucide-react";
+import type { UIEquationStep } from "../../session/useLiveSession";
 
 type StepsRailProps = {
-  steps: (EquationStep & { uiIndex: number })[];
+  steps: UIEquationStep[];
   activeStepId?: string;
   previewStepId?: string;
   hoverStepId: string | null;

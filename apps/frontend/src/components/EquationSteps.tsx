@@ -1,8 +1,9 @@
-import type { EquationStep, ReexplanStyle } from "@shared/types";
+import type { ReexplanStyle } from "@shared/types";
+import type { UIEquationStep } from "../session/useLiveSession";
 import { Fragment, useEffect } from "react";
 
 type EquationStepsProps = {
-  steps: (EquationStep & { uiIndex: number })[];
+  steps: UIEquationStep[];
   activeStepId?: string;
   previewStepId?: string;
   hoverStepId: string | null;
@@ -51,6 +52,27 @@ export function EquationSteps({
         const isHovered = step.id === hoverStepId && !isActive;
         const isPending = step.id === pendingStepId && !isActive;
         const isAnimated = step.id === animatedStepId;
+        const audioBadge =
+          step.audioStatus === "ready"
+            ? {
+                label: "Audio ready",
+                background: "rgba(16,185,129,0.16)",
+                color: "#047857",
+                border: "1px solid rgba(16,185,129,0.35)",
+              }
+            : step.audioStatus === "buffering"
+            ? {
+                label: "Audio buffering",
+                background: "rgba(245,158,11,0.16)",
+                color: "#b45309",
+                border: "1px solid rgba(245,158,11,0.35)",
+              }
+            : {
+                label: "Audio pending",
+                background: "rgba(148,163,184,0.16)",
+                color: "#475569",
+                border: "1px solid rgba(148,163,184,0.35)",
+              };
 
         return (
           <Fragment key={step.id}>
@@ -112,7 +134,24 @@ export function EquationSteps({
                   {pendingStepLabel}
                 </div>
               )}
-              <strong>Step {step.uiIndex}</strong>
+              <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                <strong>Step {step.uiIndex}</strong>
+                {audioBadge && (
+                  <span
+                    style={{
+                      fontSize: 10,
+                      padding: "2px 6px",
+                      borderRadius: 999,
+                      background: audioBadge.background,
+                      color: audioBadge.color,
+                      border: audioBadge.border,
+                      fontWeight: 600,
+                    }}
+                  >
+                    {audioBadge.label}
+                  </span>
+                )}
+              </div>
               <div style={{ fontSize: 16, marginTop: 4 }}>{step.equation}</div>
               <div style={{ opacity: 0.8 }}>{step.text}</div>
 

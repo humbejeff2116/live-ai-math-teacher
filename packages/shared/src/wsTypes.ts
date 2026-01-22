@@ -4,6 +4,13 @@ import type { TeacherSignal } from "./teacherState";
 
 export type ResumeFromStepSource = "waveform";
 
+export type AudioStatus =
+  | "connecting"
+  | "ready"
+  | "reconnecting"
+  | "closed"
+  | "error";
+
 export type ClientToServerMessage =
   | {
       type: "user_message";
@@ -58,11 +65,20 @@ export type ClientToServerMessage =
 export type ServerToClientMessage =
   | TeacherSignal
   | {
+      type: "audio_status";
+      payload: {
+        status: AudioStatus;
+        // optional metadata for debugging/UX
+        reason?: string;
+        atMs: number; // Date.now() on server
+      };
+    }
+  | {
       type: "ai_audio_chunk";
       payload: {
         audioBase64: string;
         audioMimeType?: string;
-        stepId: string; // Include stepId in the message to the client
+        stepId: string;
       };
     }
   | {

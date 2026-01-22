@@ -27,6 +27,7 @@ const TEACHER_LABEL: Record<TeacherState, string> = {
 export function TeachingSession() {
   const [input, setInput] = useState("");
   const [isListening, setIsListening] = useState(false);
+  const [nowMs, setNowMs] = useState(() => Date.now());
   const { state: debugState } = useDebugState();
   const { reconnect } = useWebSocketState();
 
@@ -44,6 +45,7 @@ export function TeachingSession() {
     getStepTimeline,
     startNewProblem,
     liveAudio,
+    lastAudioChunkAtMs,
   } = useLiveSession();
 
   const { audioState, waveform, currentTimeMs, seekWithFadeMs, unlockAudio } = 
@@ -102,6 +104,9 @@ export function TeachingSession() {
     : debugState.connected
     ? "connected"
     : "disconnected";
+  const isAudioBuffering =
+    teacherState === "explaining" &&
+    (lastAudioChunkAtMs == null || nowMs - lastAudioChunkAtMs > 1500);
 
   useEffect(() => {
     return () => {
@@ -111,6 +116,11 @@ export function TeachingSession() {
       }
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  useEffect(() => {
+    const interval = window.setInterval(() => setNowMs(Date.now()), 300);
+    return () => window.clearInterval(interval);
   }, []);
 
   useEffect(() => {
@@ -143,6 +153,7 @@ export function TeachingSession() {
             status={connectionStatus}
             onReconnect={reconnect}
             onStartNewProblem={startNewProblem}
+            audioBuffering={isAudioBuffering}
           />
         }
         audioStrip={

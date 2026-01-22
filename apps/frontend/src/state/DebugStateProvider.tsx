@@ -8,7 +8,6 @@ export function DebugProvider({ children }: { children: React.ReactNode }) {
     interruptedCount: 0,
     lastLatencyMs: undefined,
     isReconnecting: false,
-    // stepAudioRanges: [],
   });
   const value = useMemo(() => ({ state, setState }), [state]);
 

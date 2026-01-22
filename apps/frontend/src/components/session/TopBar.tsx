@@ -11,6 +11,7 @@ type TopBarProps = {
   teacherState: TeacherState;
   onReconnect?: () => void;
   onStartNewProblem: () => void;
+  audioBuffering?: boolean;
 };
 
 function Waveform() {
@@ -30,6 +31,7 @@ export function TopBar({
   status,
   onReconnect,
   onStartNewProblem,
+  audioBuffering = false,
 }: TopBarProps) {
   const isActive =
   teacherState === "explaining" || teacherState === "re-explaining";
@@ -85,6 +87,12 @@ export function TopBar({
           </div>
           <span className="leading-none">{teacherLabel}</span>
         </div>
+        {audioBuffering && (
+          <div className="mt-1 inline-flex items-center gap-2 rounded-full border border-amber-200 bg-amber-50 px-2.5 py-0.5 text-xs font-semibold text-amber-800">
+            <span className="h-2 w-2 rounded-full bg-amber-500" />
+            Audio buffering...
+          </div>
+        )}
         <button
           onClick={onStartNewProblem}
           className="rounded-md border border-rose-200 bg-rose-500 px-3 py-1.5 text-sm font-semibold text-white shadow-sm transition hover:bg-rose-600"

@@ -1,11 +1,12 @@
-// GeminiLiveAudioClient.ts
 import WebSocket from "ws";
 import { env } from "../../config/env.js";
+import { AudioStatus } from "@shared/types";
 
 type StepAudioHooks = {
   onStepStart(stepId: string): void;
   onStepEnd(stepId: string): void;
 };
+
 
 const DEFAULT_GEMINI_LIVE_WS_URL =
   "wss://generativelanguage.googleapis.com/ws/google.ai.generativelanguage.v1beta.GenerativeService.BidiGenerateContent";
@@ -26,7 +27,8 @@ export class GeminiLiveAudioClient {
 
   private active = true;
 
-  private readyPromise: Promise<void>;
+  private connectPromise: Promise<void> | null = null;
+  private readyPromise: Promise<void> = Promise.resolve();
   private resolveReady: (() => void) | null = null;
   private rejectReady: ((err: Error) => void) | null = null;
 
@@ -42,7 +44,7 @@ export class GeminiLiveAudioClient {
   private currentTurnResolver: (() => void) | null = null;
   private currentTurnDidStart = false;
 
-  private connecting = false;
+  private hasConnectedOnce = false;
 
   constructor(
     private onAudioChunk: (
@@ -51,11 +53,9 @@ export class GeminiLiveAudioClient {
       mimeType?: string,
     ) => void,
     private hooks: StepAudioHooks,
+    private onStatus?: (status: AudioStatus, reason?: string) => void,
   ) {
-    this.readyPromise = new Promise((resolve, reject) => {
-      this.resolveReady = resolve;
-      this.rejectReady = reject;
-    });
+    this.resetReadyPromise();
 
     this.stoppedPromise = new Promise((resolve) => {
       this.resolveStopped = resolve;
@@ -66,24 +66,25 @@ export class GeminiLiveAudioClient {
   }
 
   // ---- NEW: connect/reconnect ----
-  private async connect(): Promise<void> {
-    if (this.connecting) return;
-    this.connecting = true;
+  private connect(): Promise<void> {
+    if (this.connectPromise) return this.connectPromise;
 
     // reset setup state + ready promise
     this.setupComplete = false;
     this.inboundLogCount = 0;
-
-    this.readyPromise = new Promise((resolve, reject) => {
-      this.resolveReady = resolve;
-      this.rejectReady = reject;
-    });
+    this.resetReadyPromise();
+    this.connectPromise = this.readyPromise;
 
     const url = buildLiveWsUrl(env.gemini.liveWsUrl, env.gemini.apiKey);
     this.ws = new WebSocket(url);
 
+    if (this.hasConnectedOnce) {
+      this.onStatus?.("reconnecting");
+    }
+
     const onOpen = () => {
       console.log("GeminiLiveAudioClient::WS open. Sending setup...");
+      this.onStatus?.("connecting");
       this.sendSetup();
       this.setupTimeout = setTimeout(() => {
         if (!this.setupComplete) {
@@ -99,7 +100,9 @@ export class GeminiLiveAudioClient {
     this.ws.once("error", (err) => {
       console.error("GeminiLiveAudioClient failed to connect:", err);
       this.clearSetupTimeout();
+      this.onStatus?.("error", err.message);
       this.rejectReady?.(err);
+      this.clearConnection("error");
     });
 
     this.ws.on("close", (code, reason) => {
@@ -108,6 +111,11 @@ export class GeminiLiveAudioClient {
 
       // Mark inactive connection, but keep client "active" concept separate
       this.clearSetupTimeout();
+      if (!this.setupComplete) {
+        this.rejectReady?.(
+          new Error(`GeminiLiveAudioClient closed before ready: ${reasonText}`),
+        );
+      }
 
       // resolve any pending turn to avoid deadlocks
       if (this.currentTurnResolver) {
@@ -119,8 +127,7 @@ export class GeminiLiveAudioClient {
       this.resolveStopped?.();
 
       // Important: don't keep a dead socket
-      this.ws = null;
-      this.connecting = false;
+      this.clearConnection("closed");
     });
 
     this.ws.on("message", (data) => {
@@ -137,6 +144,7 @@ export class GeminiLiveAudioClient {
           this.setupComplete = true;
           this.clearSetupTimeout();
           console.log("GeminiLiveAudioClient::setupComplete received");
+          this.onStatus?.("ready");
           this.resolveReady?.();
         }
 
@@ -187,7 +195,8 @@ export class GeminiLiveAudioClient {
       }
     });
 
-    this.connecting = false;
+    this.hasConnectedOnce = true;
+    return this.connectPromise;
   }
 
   private sendSetup() {
@@ -215,7 +224,12 @@ export class GeminiLiveAudioClient {
 
     // If socket missing or not open, reconnect
     if (!this.ws || this.ws.readyState !== WebSocket.OPEN) {
-      await this.connect();
+      try {
+        await this.connect();
+      } catch (err) {
+        console.error("GeminiLiveAudioClient::connect failed", err);
+        return false;
+      }
     }
 
     // If connect didn't yield an open socket, fail safely
@@ -303,6 +317,17 @@ export class GeminiLiveAudioClient {
     });
   }
 
+  async prewarm(): Promise<boolean> {
+    if (!this.active) return false;
+    try {
+      await this.ensureConnected();
+      return true;
+    } catch (err) {
+      console.error("GeminiLiveAudioClient::prewarm failed", err);
+      return false;
+    }
+  }
+
   close() {
     try {
       this.ws?.close();
@@ -323,6 +348,22 @@ export class GeminiLiveAudioClient {
     if (this.setupTimeout) {
       clearTimeout(this.setupTimeout);
       this.setupTimeout = null;
+    }
+  }
+
+  private resetReadyPromise() {
+    this.readyPromise = new Promise((resolve, reject) => {
+      this.resolveReady = resolve;
+      this.rejectReady = reject;
+    });
+  }
+
+  private clearConnection(reason?: string) {
+    const hadSocket = this.ws != null;
+    this.ws = null;
+    this.connectPromise = null;
+    if (hadSocket) {
+      this.onStatus?.("closed", reason);
     }
   }
 }

@@ -1,6 +1,10 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useDebugState } from "../state/debugState";
-import type { EquationStep, ResumeFromStepSource, ServerToClientMessage } from "@shared/types";
+import type {
+  EquationStep,
+  ResumeFromStepSource,
+  ServerToClientMessage,
+} from "@shared/types";
 import { useTTS } from "../textToSpeech/useTTS";
 import { useLiveAudio } from "../audio/useLiveAudio";
 import { useWebSocketState } from "../state/weSocketState";
@@ -23,6 +27,7 @@ export function useLiveSession() {
     currentProblemId,
     teacherState,
     aiLifecycleTick,
+    lastAudioChunkAtMs,
     currentProblemIdRef,
     setProblemId,
     setChat,
@@ -152,16 +157,26 @@ export function useLiveSession() {
     getStepTimeline: () => stepTimelineRef.current,
     startNewProblem,
     liveAudio,
+    lastAudioChunkAtMs,
   };
 }
 
-  export type UIEquationStep = EquationStep & { uiIndex: number; runId: number };
-  export type ChatMessage = {
-    id: string;
-    role: "student" | "teacher";
-    text: string;
-    createdAtMs: number;
-  };
+export type AudioStepStatus = "pending" | "buffering" | "ready";
+const AUDIO_READY = "ready" as const;
+const AUDIO_PENDING = "pending" as const;
+const AUDIO_BUFFERING = "buffering" as const;
+export type UIEquationStep = EquationStep & {
+  uiIndex: number;
+  runId: number;
+  audioStatus: AudioStepStatus;
+  audioPendingAtMs: number;
+};
+export type ChatMessage = {
+  id: string;
+  role: "student" | "teacher";
+  text: string;
+  createdAtMs: number;
+};
 
 export function useHandleMessage(
   stepTimelineRef: React.RefObject<AudioStepTimeline>,
@@ -175,6 +190,9 @@ export function useHandleMessage(
   const [streamingText, setStreamingText] = useState("");
   const [aiLifecycleTick, setAiLifecycleTick] = useState(0);
   const [currentProblemId, setCurrentProblemId] = useState(0);
+  const [lastAudioChunkAtMs, setLastAudioChunkAtMs] = useState<number | null>(
+    null,
+  );
   const { setState: setDebugState } = useDebugState();
   const bufferRef = useRef("");
   const currentProblemIdRef = useRef(0);
@@ -238,6 +256,17 @@ export function useHandleMessage(
       updateLatencyOnce();
       dispatchTeacher(message);
 
+      if (message.type === "audio_status") {
+        setDebugState((s) => ({
+          ...s,
+          audioStatus: message.payload.status,
+          audioStatusReason: message.payload.reason ?? null,
+          audioStatusAtMs: message.payload.atMs,
+        }));
+        // if reconnecting/connecting, clear lastAudioChunkAtMs so buffering pill appears
+        if (message.payload.status !== "ready") setLastAudioChunkAtMs(null);
+      }
+
       if (message.type === "ai_reexplained") {
         setDebugState((s) => ({
           ...s,
@@ -300,7 +329,16 @@ export function useHandleMessage(
             return prev;
           }
           const uiIndex = alreadyInRun.length + 1;
-          return [...prev, { ...message.payload, runId, uiIndex }];
+          return [
+            ...prev,
+            {
+              ...message.payload,
+              runId,
+              uiIndex,
+              audioStatus: AUDIO_PENDING,
+              audioPendingAtMs: Date.now(),
+            },
+          ];
         });
 
         setDebugState((s) => ({
@@ -324,6 +362,17 @@ export function useHandleMessage(
           "Received AI audio chunk for step:",
           message.payload.stepId,
         );
+        setLastAudioChunkAtMs(Date.now());
+        setEquationSteps((prev) => {
+          let changed = false;
+          const next = prev.map((step) => {
+            if (step.id !== message.payload.stepId) return step;
+            if (step.audioStatus === "ready") return step;
+            changed = true;
+            return { ...step, audioStatus: AUDIO_READY };
+          });
+          return changed ? next : prev;
+        });
         playChunk(
           message.payload.audioBase64,
           message.payload.stepId,
@@ -367,6 +416,25 @@ export function useHandleMessage(
     [dispatchTeacher, setDebugState, sendTimeRef, stepTimelineRef, lastStepIndexRef, DEBUG_EQUATION_STEPS, interruptTTS, playChunk],
   );
 
+  useEffect(() => {
+    if (teacherState !== "explaining") return;
+    const interval = window.setInterval(() => {
+      const now = Date.now();
+      setEquationSteps((prev) => {
+        let changed = false;
+        const next = prev.map((step) => {
+          if (step.runId !== currentProblemIdRef.current) return step;
+          if (step.audioStatus !== "pending") return step;
+          if (now - step.audioPendingAtMs <= 1500) return step;
+          changed = true;
+          return { ...step, audioStatus: AUDIO_BUFFERING };
+        });
+        return changed ? next : prev;
+      });
+    }, 300);
+    return () => window.clearInterval(interval);
+  }, [teacherState, currentProblemIdRef]);
+
   return {
     chat,
     streamingText,
@@ -379,6 +447,7 @@ export function useHandleMessage(
     handleMessage,
     teacherState,
     aiLifecycleTick,
+    lastAudioChunkAtMs,
     appendStudentMessage,
     maybeStartNewProblemFromStudentText,
   };

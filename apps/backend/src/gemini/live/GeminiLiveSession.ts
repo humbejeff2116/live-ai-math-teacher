@@ -103,6 +103,12 @@ export class GeminiLiveSession {
           }
         },
       },
+      (status, reason) => {
+        this.send({
+          type: "audio_status",
+          payload: { status, reason, atMs: Date.now() },
+        });
+      },
     );
   }
 
@@ -343,6 +349,7 @@ export class GeminiLiveSession {
       this.lastSentStepId = null;
       // FIX 2: Re-enable audio if it was stopped by interrupt
       this.audioClient.resume();
+      void this.audioClient.prewarm();
 
       const stream = await this.streamingClient.streamText(prompt, {
         signal: this.abortController.signal,
@@ -380,7 +387,7 @@ export class GeminiLiveSession {
 
           if (step) {
             // Dedupe: only handle each stepId once per stream
-            if (this.spokenStepIds.has(step.id)) return;
+            if (this.spokenStepIds.has(step.id)) continue;
 
             this.spokenStepIds.add(step.id);
 
