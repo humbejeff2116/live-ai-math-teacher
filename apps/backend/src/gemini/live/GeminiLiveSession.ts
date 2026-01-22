@@ -68,7 +68,7 @@ export class GeminiLiveSession {
       {
         // stepId: null,
         onStepStart: (stepId) => {
-          console.log("GeminiLiveSession:onStepStart stepId:", stepId);
+          console.log("GeminiLiveSession::onStepStart stepId:", stepId);
           if (!stepId) return;
 
           try {
@@ -151,8 +151,11 @@ export class GeminiLiveSession {
   }
 
   async resumeFromStep(stepId: string) {
+    console.log("GeminiLiveSession::resumeFromStep: ", stepId);
     try {
       const step = this.stepExtractor.getSteps().find((s) => s.id === stepId);
+
+      console.log("GeminiLiveSession::step: ", JSON.stringify(step));
 
       if (!step) {
         // Fail safely: ask student what they want
