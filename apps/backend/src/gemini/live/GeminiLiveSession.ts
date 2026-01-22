@@ -43,19 +43,23 @@ export class GeminiLiveSession {
   private audioClock = new AudioClock();
   private stepAudioTracker = new StepAudioTracker(this.audioClock);
 
+  private spokenStepIds = new Set<string>();
+  private lastSentStepId: string | null = null;
+
   constructor(private ws: WebSocket) {
     this.streamingClient = new GeminiLiveStreamingClient();
     this.audioClient = new GeminiLiveAudioClient(
-      (chunk, stepId) => {
+      (chunk, stepId, mimeType) => {
         try {
           this.ws.send(
             JSON.stringify({
               type: "ai_audio_chunk",
               payload: {
                 audioBase64: chunk.toString("base64"),
+                audioMimeType: mimeType ?? null,
                 stepId: stepId, // Include stepId in the message to the client
               },
-            })
+            }),
           );
         } catch (err) {
           console.error("Error sending audio chunk:", err);
@@ -75,7 +79,7 @@ export class GeminiLiveSession {
               JSON.stringify({
                 type: "step_audio_start",
                 payload: { stepId, atMs },
-              })
+              }),
             );
           } catch (err) {
             console.error("Error sending step audio start:", err);
@@ -92,13 +96,13 @@ export class GeminiLiveSession {
               JSON.stringify({
                 type: "step_audio_end",
                 payload: { stepId, atMs },
-              })
+              }),
             );
           } catch (err) {
             console.error("Error sending step audio end:", err);
           }
         },
-      }
+      },
     );
   }
 
@@ -124,7 +128,7 @@ export class GeminiLiveSession {
       const isContinuing =
         Boolean(this.resumeContext.lastCompletedStep) || forceResumeMode;
 
-        let prompt: string;
+      let prompt: string;
 
       if (isContinuing && this.resumeContext.lastCompletedStep) {
         // Use the smart resume prompt with history
@@ -132,7 +136,7 @@ export class GeminiLiveSession {
         prompt = buildResumePrompt(
           text,
           this.resumeContext.lastCompletedStep,
-          this.resumeContext.fullExplanationSoFar
+          this.resumeContext.fullExplanationSoFar,
         );
       } else {
         // Only use fresh prompt if we have NO active problem context
@@ -276,7 +280,7 @@ export class GeminiLiveSession {
 
       if (!step) {
         await this.handleUserMessage(
-          "Which step would you like me to explain again?"
+          "Which step would you like me to explain again?",
         );
         return;
       }
@@ -294,7 +298,7 @@ export class GeminiLiveSession {
 
       if (!step) {
         await this.handleUserMessage(
-          "I can slow down or explain a step again — which part is confusing?"
+          "I can slow down or explain a step again — which part is confusing?",
         );
         return;
       }
@@ -332,6 +336,8 @@ export class GeminiLiveSession {
       this.abortController = new AbortController();
       this.aborted = false;
       this.isSpeaking = true;
+      this.spokenStepIds.clear();
+      this.lastSentStepId = null;
       // FIX 2: Re-enable audio if it was stopped by interrupt
       this.audioClient.resume();
 
@@ -370,20 +376,32 @@ export class GeminiLiveSession {
           const step = this.stepExtractor.pushText(chunk.text);
 
           if (step) {
+            // Dedupe: only handle each stepId once per stream
+            if (this.spokenStepIds.has(step.id)) return;
+
+            this.spokenStepIds.add(step.id);
+
             this.resumeContext.lastCompletedStep = step;
             this.currentSpokenStepId = step.id;
 
-            if (DEBUG_EQUATION_STEPS) {
-              console.log("[equation_step send]", {
-                id: step.id,
-                index: step.index,
-                equation: step.equation,
-              });
+            // Also guard duplicate sends (optional but helpful)
+            if (this.lastSentStepId !== step.id) {
+              this.lastSentStepId = step.id;
+
+              if (DEBUG_EQUATION_STEPS) {
+                console.log("[equation_step send]", {
+                  id: step.id,
+                  index: step.index,
+                  equation: step.equation,
+                });
+              }
+              this.send({ type: "equation_step", payload: step });
             }
-            this.send({ type: "equation_step", payload: step });
+
             // 🔊 Step-aware audio
             await this.audioClient.speakStep(step.id, step.text);
           }
+
         }
       } finally {
         this.isSpeaking = false;
