@@ -1,10 +1,14 @@
-import type { ServerToClientMessage, ClientToServerMessage } from "@shared/types";
+import type {
+  ServerToClientMessage,
+  ClientToServerMessage,
+} from "@shared/types";
 
 type MessageHandler = (msg: ServerToClientMessage) => void;
 
 export class LiveWSClient {
   private socket: WebSocket | null = null;
   private handler: MessageHandler;
+
   public onOpen?: () => void;
   public onClose?: () => void;
 
@@ -13,25 +17,38 @@ export class LiveWSClient {
   }
 
   connect(url: string) {
-    if (this.socket) return;
+    // If a socket already exists and isn't fully closed, don't create a new one.
+    if (this.socket && this.socket.readyState !== WebSocket.CLOSED) return;
 
-    this.socket = new WebSocket(url);
+    const ws = new WebSocket(url);
+    this.socket = ws;
 
-    this.socket.onopen = () => {
+    ws.onopen = () => {
+      // Ignore if this isn't the active socket anymore
+      if (this.socket !== ws) return;
       console.log("WS connected");
       this.onOpen?.();
     };
 
-    this.socket.onmessage = (event) => {
-      const message = JSON.parse(event.data) as ServerToClientMessage;
-      this.handler(message);
+    ws.onmessage = (event) => {
+      if (this.socket !== ws) return;
+      try {
+        const message = JSON.parse(event.data) as ServerToClientMessage;
+        this.handler(message);
+      } catch (err) {
+        console.error("WS message parse error", err);
+      }
     };
 
-    this.socket.onerror = (err) => {
+    ws.onerror = (err) => {
+      if (this.socket !== ws) return;
       console.error("WS error", err);
     };
 
-    this.socket.onclose = () => {
+    ws.onclose = () => {
+      // Ignore if this isn't the active socket anymore
+      if (this.socket !== ws) return;
+
       console.log("WS closed");
       this.socket = null;
       this.onClose?.();
@@ -39,19 +56,45 @@ export class LiveWSClient {
   }
 
   send(message: ClientToServerMessage) {
-    if (!this.socket || this.socket.readyState !== WebSocket.OPEN) {
+    const ws = this.socket;
+    if (!ws || ws.readyState !== WebSocket.OPEN) {
       console.warn("WS not connected");
       return;
     }
 
-    this.socket.send(JSON.stringify(message));
+    ws.send(JSON.stringify(message));
   }
 
-  // close() {
-  //   if (!this.socket) return;
+  /**
+   * Safe, idempotent close.
+   * - Does NOT send `{ type: "close" }` (your server logs show it doesn't expect it).
+   * - Detaches handlers to prevent late events firing into stale state.
+   * - Optionally takes a code/reason (browser may ignore custom code in some cases).
+   */
+  close(code?: number, reason?: string) {
+    const ws = this.socket;
+    if (!ws) return;
 
-  //   this.send({ type: "close" });
-  //   this.socket.close();
-  //   this.socket = null;
-  // }
+    // Mark inactive immediately so future events are ignored
+    this.socket = null;
+
+    // Detach handlers so stale events don't call into app logic
+    ws.onopen = null;
+    ws.onmessage = null;
+    ws.onerror = null;
+    ws.onclose = null;
+
+    try {
+      // Only call close if it isn't already closing/closed
+      if (
+        ws.readyState === WebSocket.OPEN ||
+        ws.readyState === WebSocket.CONNECTING
+      ) {
+        // NOTE: Some browsers ignore custom codes/reasons here.
+        ws.close(code, reason);
+      }
+    } catch (err) {
+      console.warn("WS close failed", err);
+    }
+  }
 }
