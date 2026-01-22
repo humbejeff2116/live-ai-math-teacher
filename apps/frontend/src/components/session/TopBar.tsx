@@ -62,7 +62,7 @@ export function TopBar({
           className={`mt-1 inline-flex items-center gap-2 rounded-full border px-2.5 py-0.5 text-xs font-medium transition-all duration-300 h-7 ${
             isActive
               ? "bg-sky-50 border-sky-200 text-sky-700"
-              : "bg-slate-100 border-slate-200 text-slate-600"
+              : "bg-indigo-50 ring-1 ring-indigo-100 text-slate-600"
           }`}
         >
           <div className="flex items-center justify-center w-4 h-4">
@@ -72,6 +72,15 @@ export function TopBar({
             )}
             {teacherState === "idle" && (
               <span className="h-2 w-2 rounded-full bg-slate-400" />
+            )}
+            {teacherState === "explaining" && !isActive && (
+              <span className="h-2 w-2 rounded-full bg-sky-500" />
+            )}
+            {teacherState === "re-explaining" && !isActive && (
+              <span className="h-2 w-2 rounded-full bg-indigo-500" />
+            )}
+            {teacherState === "waiting" && (
+              <span className="h-2 w-2 rounded-full bg-slate-400 animate-pulse" />
             )}
           </div>
           <span className="leading-none">{teacherLabel}</span>
