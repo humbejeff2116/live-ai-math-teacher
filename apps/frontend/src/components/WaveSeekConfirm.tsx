@@ -1,8 +1,8 @@
 import { useCallback, useEffect, useRef } from "react";
-import type { EquationStep } from "@shared/types";
+import type { UIEquationStep } from "../session/useLiveSession";
 
 type Props = {
-  step: EquationStep;
+  step: UIEquationStep;
   position: { x: number; y: number };
   isConfirming?: boolean;
   onConfirm: () => void;
@@ -74,7 +74,7 @@ export function WaveSeekConfirm({
       }}
     >
       <div style={{ fontWeight: 600, marginBottom: 6 }}>
-        Step {step.index + 1} - {step.type}
+        Step {step.uiIndex} - {step.type}
       </div>
       <div style={{ fontSize: 12, opacity: 0.75, marginBottom: 10 }}>
         {getPreview(step.text)}

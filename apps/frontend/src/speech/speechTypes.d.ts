@@ -1,6 +1,7 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 declare global {
   interface SpeechRecognition extends EventTarget {
+    onend: () => void;
     lang: string;
     continuous: boolean;
     interimResults: boolean;

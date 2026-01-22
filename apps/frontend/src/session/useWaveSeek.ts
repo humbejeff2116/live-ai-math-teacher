@@ -1,7 +1,7 @@
 import { useEffect, useEffectEvent, useMemo, useRef, useState } from "react";
 import type { AudioStepTimeline } from "../audio/audioStepTimeLine";
 import type { PendingSeek } from "./useWaveform";
-import type { EquationStep } from "@shared/types/src/types";
+import type { UIEquationStep } from "./useLiveSession";
 
 
 export function useWaveSeek(
@@ -9,7 +9,7 @@ export function useWaveSeek(
   stepTimeline: AudioStepTimeline,
   pendingSeek: PendingSeek | null,
   setPendingSeek: React.Dispatch<React.SetStateAction<PendingSeek | null>>,
-  equationSteps: EquationStep[],
+  equationSteps: UIEquationStep[],
   activeStepId: string | null,
   currentTimeMs: number,
   seekWithFadeMs: (
@@ -100,7 +100,7 @@ export function useWaveSeek(
     const stepForToast = stepById.get(pendingSeek.stepId);
     const toastId = (seekToastCounterRef.current += 1);
     const toastMessage = stepForToast
-      ? `Resuming from Step ${stepForToast.index + 1}...`
+      ? `Resuming from Step ${stepForToast.uiIndex}...`
       : "Resuming...";
     setSeekToast({ id: toastId, message: toastMessage });
     if (seekToastTimeoutRef.current != null) {

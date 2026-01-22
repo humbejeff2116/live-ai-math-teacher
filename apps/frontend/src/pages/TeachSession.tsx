@@ -49,16 +49,12 @@ export function TeachingSession() {
   const { audioState, waveform, currentTimeMs, seekWithFadeMs, unlockAudio } = 
     liveAudio;
 
-  const { startListening } = useSpeechInput(
-    (text) => {
-      if (isListening) {
-        handleStudentSpeechFinal(text);
-      } else {
-        sendUserMessage(text);
-      }
-    },
-    setIsListening
-  );
+  const { startListening, stopListening, micLevel, isUserSpeaking } =
+    useSpeechInput((text) => {
+      if (isListening) handleStudentSpeechFinal(text);
+      else sendUserMessage(text);
+    }, setIsListening);
+
 
   const stepTimeline = getStepTimeline();
   const activeStepId = stepTimeline.getActiveStepMonotonic(currentTimeMs);
@@ -116,6 +112,13 @@ export function TeachingSession() {
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  useEffect(() => {
+  if (teacherState === "thinking" || teacherState === "explaining" || teacherState === "re-explaining") {
+    if (isListening) stopListening();
+  }
+}, [teacherState, isListening, stopListening]);
+
 
   const handleSend = async () => {
     await unlockAudio();
@@ -210,7 +213,10 @@ export function TeachingSession() {
             setInput={setInput}
             onSend={handleSend}
             isListening={isListening}
+            isUserSpeaking={isUserSpeaking}
+            micLevel={micLevel}
             onStartListening={onStartListening}
+            onStopListening={stopListening}
           />
         }
       />
