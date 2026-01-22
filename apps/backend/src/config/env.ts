@@ -58,11 +58,17 @@ function requireEnv(name: string): string {
   return value;
 }
 
+const DEFAULT_PORT = nodeEnv === "production" ? 8000 : 3001;
 export const env = {
   nodeEnv,
-  port: Number(process.env.PORT ?? 3001),
+  port: Number(process.env.PORT ?? DEFAULT_PORT),
   publicDir: process.env.PUBLIC_DIR,
+  qstashToken: process.env.QSTASH_TOKEN,
+  koyebServiceUrl: process.env.KOYEB_SERVICE_URL,
 
+  /**
+   * Gemini API configuration
+   */
   gemini: {
     apiKey: requireEnv("GEMINI_API_KEY"),
     projectId: requireEnv("GEMINI_PROJECT_ID"),
