@@ -1,10 +1,11 @@
 import { Client } from "@upstash/qstash";
+import { env } from "../config/env.js";
 
-const client = new Client({ token: process.env.QSTASH_TOKEN! });
+const client = new Client({ token: env.qstashToken! });
 
 export function pingRenderService() {
   return client.schedules.create({
-    destination: process.env.RENDER_SERVICE_URL!,
+    destination: env.koyebServiceUrl!,
     cron: "*/5 * * * *",
   });
 }
