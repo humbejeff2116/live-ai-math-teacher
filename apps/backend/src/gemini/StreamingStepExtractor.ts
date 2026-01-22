@@ -102,23 +102,25 @@ export class StreamingStepExtractor {
   }
 
   private extractEquationCandidates(text: string): string[] {
-    // Allow common math characters + parentheses + powers + decimals
-    const re = /([0-9a-zA-Z\s+\-*/^().]+=[0-9a-zA-Z\s+\-*/^().]+)/g;
+    // A “math token” is:
+    // - numbers/operators/space/paren/decimal
+    // - OR a single letter variable (not part of a word)
+    //
+    // This prevents matching "... = 9 - 3 Now" because "Now" is a word.
+    const token = String.raw`(?:[0-9\s+\-*/^().]|[a-zA-Z](?![a-zA-Z]))+`;
+    const re = new RegExp(`(${token}=${token})`, "g");
 
     const out: string[] = [];
     let m: RegExpExecArray | null;
 
     while ((m = re.exec(text)) !== null) {
       const candidate = (m[1] ?? "").trim();
-
-      // Basic filtering: require something meaningful on both sides
-      if (!candidate.includes("=")) continue;
       if (candidate.length < 5) continue;
 
-      // Trim trailing punctuation
       const cleaned = candidate.replace(/[.,;:!?]+$/, "").trim();
+      if (!cleaned.includes("=")) continue;
 
-      // Must contain at least one digit or variable letter
+      // Must have at least one digit or single-letter variable
       if (!/[0-9a-zA-Z]/.test(cleaned)) continue;
 
       out.push(cleaned);
@@ -128,7 +130,11 @@ export class StreamingStepExtractor {
   }
 
   private normalizeEquation(equation: string): string {
-    return equation.toLowerCase().replace(/\s+/g, " ").trim();
+    return equation
+      .toLowerCase()
+      .replace(/\s+/g, " ")
+      .replace(/[.,;:!?]+$/g, "")
+      .trim();
   }
 
   reset() {
