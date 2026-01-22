@@ -1,3 +1,4 @@
+import { AstridLogo } from "@/components/astrid/AstridLogo";
 import { routes } from "@/routes";
 import {
   ArrowRight,
@@ -15,13 +16,7 @@ export function Landing() {
       <header className="sticky top-0 z-40 border-b border-slate-200 bg-white/80 backdrop-blur">
         <div className="mx-auto flex w-full max-w-6xl items-center justify-between px-4 py-3">
           <div className="flex items-center gap-2">
-            <div className="grid h-9 w-9 place-items-center rounded-xl bg-indigo-50 text-indigo-700 ring-1 ring-indigo-100">
-              <Sparkles size={18} />
-            </div>
-            <div className="leading-tight">
-              <div className="text-sm font-semibold">SolveAI</div>
-              <div className="text-xs text-slate-500">Powered by Astrid</div>
-            </div>
+            <AstridLogo />
           </div>
 
           <div className="flex items-center gap-2">
@@ -39,9 +34,10 @@ export function Landing() {
             </a>
             <Link
               to={routes.demo}
-              className="hidden rounded-lg bg-indigo-600 px-3 py-2 text-sm font-semibold text-white shadow-sm transition hover:bg-indigo-700 sm:inline-flex"
+              className="flex justify-center items-center rounded-lg bg-indigo-600 px-3 py-2 text-sm font-semibold text-white shadow-sm transition hover:bg-indigo-700 sm:inline-flex"
             >
-              Try the Demo <ArrowRight size={16} />
+              <span className="mr-2">Try the Demo</span>
+              <ArrowRight size={16} />
             </Link>
           </div>
         </div>
