@@ -61,6 +61,7 @@ export type ServerToClientMessage =
       type: "ai_audio_chunk";
       payload: {
         audioBase64: string;
+        audioMimeType?: string;
         stepId: string; // Include stepId in the message to the client
       };
     }
