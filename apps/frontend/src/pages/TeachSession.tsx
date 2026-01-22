@@ -1,7 +1,6 @@
 import { useEffect, useState } from "react";
 import { useLiveSession } from "../session/useLiveSession";
 import { useSpeechInput } from "../speech/useSpeechInput";
-import { useLiveAudio } from "../audio/useLiveAudio";
 import { Waveform } from "../components/WaveForm";
 import { WaveSeekConfirm } from "../components/WaveSeekConfirm";
 import type { TeacherState } from "@shared/types";
@@ -44,14 +43,11 @@ export function TeachingSession() {
     aiLifecycleTick,
     getStepTimeline,
     startNewProblem,
+    liveAudio,
   } = useLiveSession();
 
-  const {
-    audioState,
-    waveform,
-    currentTimeMs,
-    seekWithFadeMs,
-  } = useLiveAudio();
+  const { audioState, waveform, currentTimeMs, seekWithFadeMs, unlockAudio } = 
+    liveAudio;
 
   const { startListening } = useSpeechInput(
     (text) => {
@@ -65,7 +61,8 @@ export function TeachingSession() {
   );
 
   const stepTimeline = getStepTimeline();
-  const activeStepId = stepTimeline.getActiveStep(currentTimeMs);
+  const activeStepId = stepTimeline.getActiveStepMonotonic(currentTimeMs);
+
 
   const {
     previewStepId,
@@ -120,11 +117,17 @@ export function TeachingSession() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  const handleSend = () => {
+  const handleSend = async () => {
+    await unlockAudio();
     const message = input.trim();
     if (!message) return;
     sendUserMessage(message);
     setInput("");
+  };
+
+  const onStartListening = async () => {
+    await unlockAudio();
+    startListening();
   };
 
   return (
@@ -207,7 +210,7 @@ export function TeachingSession() {
             setInput={setInput}
             onSend={handleSend}
             isListening={isListening}
-            onStartListening={startListening}
+            onStartListening={onStartListening}
           />
         }
       />
