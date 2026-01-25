@@ -1,3 +1,4 @@
+import { randomUUID } from "node:crypto";
 import WebSocket from "ws";
 import { env } from "../../config/env.js";
 import { AudioStatus } from "@shared/types";
@@ -6,7 +7,6 @@ type StepAudioHooks = {
   onStepStart(stepId: string): void;
   onStepEnd(stepId: string): void;
 };
-
 
 const DEFAULT_GEMINI_LIVE_WS_URL =
   "wss://generativelanguage.googleapis.com/ws/google.ai.generativelanguage.v1beta.GenerativeService.BidiGenerateContent";
@@ -65,7 +65,6 @@ export class GeminiLiveAudioClient {
     void this.connect();
   }
 
-  // ---- NEW: connect/reconnect ----
   private connect(): Promise<void> {
     if (this.connectPromise) return this.connectPromise;
 
@@ -78,19 +77,22 @@ export class GeminiLiveAudioClient {
     const url = buildLiveWsUrl(env.gemini.liveWsUrl, env.gemini.apiKey);
     this.ws = new WebSocket(url);
 
-    if (this.hasConnectedOnce) {
-      this.onStatus?.("reconnecting");
-    }
+    this.onStatus?.(this.hasConnectedOnce ? "reconnecting" : "connecting");
 
     const onOpen = () => {
       console.log("GeminiLiveAudioClient::WS open. Sending setup...");
-      this.onStatus?.("connecting");
+      this.onStatus?.("handshaking");
       this.sendSetup();
       this.setupTimeout = setTimeout(() => {
         if (!this.setupComplete) {
           const err = new Error("GeminiLiveAudioClient setup timeout");
           console.error(err.message);
           this.rejectReady?.(err);
+          this.resolveStopped?.();
+          // Force close to ensure we reset and can reconnect cleanly
+          try {
+            this.ws?.close();
+          } catch {}
         }
       }, 10000);
     };
@@ -102,15 +104,19 @@ export class GeminiLiveAudioClient {
       this.clearSetupTimeout();
       this.onStatus?.("error", err.message);
       this.rejectReady?.(err);
-      this.clearConnection("error");
+      // helps unblock any waiters consistently
+      this.resolveStopped?.();
+      this.clearConnection();
     });
 
     this.ws.on("close", (code, reason) => {
       const reasonText = reason?.toString() || "no reason";
+      this.onStatus?.("closed", `${code}:${reasonText}`);
       console.log(`GeminiLiveAudioClient::WS close (${code}) ${reasonText}`);
 
       // Mark inactive connection, but keep client "active" concept separate
       this.clearSetupTimeout();
+
       if (!this.setupComplete) {
         this.rejectReady?.(
           new Error(`GeminiLiveAudioClient closed before ready: ${reasonText}`),
@@ -127,7 +133,7 @@ export class GeminiLiveAudioClient {
       this.resolveStopped?.();
 
       // Important: don't keep a dead socket
-      this.clearConnection("closed");
+      this.clearConnection();
     });
 
     this.ws.on("message", (data) => {
@@ -239,8 +245,14 @@ export class GeminiLiveAudioClient {
     return await this.waitForReadyOrStopped();
   }
 
-  async speakStep(stepId: string, text: string): Promise<void> {
+  async speakStep(
+    stepId: string,
+    text: string,
+    opts?: { emitStepEvents?: boolean },
+  ): Promise<void> {
     console.log(`GeminiLiveAudioClient::Preparing to speak step: ${stepId}`);
+
+    const emit = opts?.emitStepEvents !== false;
 
     const ready = await this.ensureConnected();
     if (!ready) {
@@ -253,13 +265,18 @@ export class GeminiLiveAudioClient {
       this.currentTurnDidStart = false;
 
       this.currentTurnResolver = () => {
-        if (this.currentTurnDidStart) {
+        if (this.currentTurnDidStart && emit) {
           this.hooks.onStepEnd(stepId);
         }
+
+        // Optional cleanup (helps avoid accidental reuse)
+        if (this.activeStepId === stepId) this.activeStepId = null;
+
         resolve();
       };
 
       console.log("GeminiLiveAudioClient::ws state", this.ws?.readyState);
+
       // IMPORTANT: only start the step AFTER we successfully send the prompt
       const sent = this.sendTextPrompt(text);
       if (!sent) {
@@ -268,7 +285,9 @@ export class GeminiLiveAudioClient {
         return;
       }
 
-      this.hooks.onStepStart(stepId);
+      if (emit) {
+        this.hooks.onStepStart(stepId);
+      }
       this.currentTurnDidStart = true;
     });
   }
@@ -301,13 +320,30 @@ export class GeminiLiveAudioClient {
     }
   }
 
-  stop() {
-    this.active = false;
+  async speakFreeform(text: string): Promise<void> {
+    const clean = (text ?? "").trim();
+    if (!clean) return;
+
+    const freeformId = `__freeform__:${randomUUID()}`;
+
+    // reuse step pipeline but disable step start/end hooks in speakStep
+    await this.speakStep(freeformId, clean, { emitStepEvents: false });
+
+    // optional: clear it
+    this.activeStepId = null;
+  }
+
+  haltPlayback() {
+    // stop current turn + meter, but keep client eligible to reconnect
     this.resolveStopped?.();
     if (this.currentTurnResolver) {
       this.currentTurnResolver();
       this.currentTurnResolver = null;
     }
+    try {
+      this.ws?.close(); // optional: or keep open if you want
+    } catch {}
+    this.clearConnection();
   }
 
   resume() {
@@ -358,12 +394,8 @@ export class GeminiLiveAudioClient {
     });
   }
 
-  private clearConnection(reason?: string) {
-    const hadSocket = this.ws != null;
+  private clearConnection() {
     this.ws = null;
     this.connectPromise = null;
-    if (hadSocket) {
-      this.onStatus?.("closed", reason);
-    }
   }
 }

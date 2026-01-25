@@ -1,4 +1,4 @@
-import { type TeacherState } from "@shared/types";
+import { type AudioStatus, type TeacherState } from "@shared/types";
 import { ConnectionStatus } from "./ConnectionStatus";
 import { useEffect } from "react";
 import { AstridLogo } from "../astrid/AstridLogo";
@@ -12,6 +12,8 @@ type TopBarProps = {
   onReconnect?: () => void;
   onStartNewProblem: () => void;
   audioBuffering?: boolean;
+  audioConnStatus?: AudioStatus;
+  audioConnReason?: string;
 };
 
 function Waveform() {
@@ -31,7 +33,9 @@ export function TopBar({
   status,
   onReconnect,
   onStartNewProblem,
+  audioConnStatus,
   audioBuffering = false,
+  audioConnReason,
 }: TopBarProps) {
   const isActive =
   teacherState === "explaining" || teacherState === "re-explaining";
@@ -48,6 +52,45 @@ export function TopBar({
     );
 
   }, [teacherState]);
+
+  const audioPill =
+    audioConnStatus === "ready"
+      ? {
+          text: "Audio Connected",
+          cls: "border-emerald-200 bg-emerald-50 text-emerald-800",
+          dot: "bg-emerald-500",
+        }
+      : audioConnStatus === "handshaking"
+        ? {
+            text: "Audio Handshaking…",
+            cls: "border-slate-200 bg-slate-50 text-slate-700",
+            dot: "bg-slate-400",
+          }
+        : audioConnStatus === "reconnecting"
+          ? {
+              text: "Audio Reconnecting…",
+              cls: "border-amber-200 bg-amber-50 text-amber-800",
+              dot: "bg-amber-500",
+            }
+          : audioConnStatus === "connecting"
+            ? {
+                text: "Audio Connecting…",
+                cls: "border-slate-200 bg-slate-50 text-slate-700",
+                dot: "bg-slate-400",
+              }
+            : audioConnStatus === "error"
+              ? {
+                  text: "Audio Error",
+                  cls: "border-rose-200 bg-rose-50 text-rose-800",
+                  dot: "bg-rose-500",
+                }
+              : audioConnStatus === "closed"
+                ? {
+                    text: "Audio Offline",
+                    cls: "border-rose-200 bg-rose-50 text-rose-800",
+                    dot: "bg-rose-500",
+                  }
+                : null;
   
   return (
     <div className="flex w-full flex-wrap items-center justify-between gap-3">
@@ -61,36 +104,43 @@ export function TopBar({
 
       <div className="flex items-center gap-3">
         <div
-          className={`mt-1 inline-flex items-center gap-2 rounded-full border px-2.5 py-0.5 text-xs font-medium transition-all duration-300 h-7 ${
+          className={`mt-1 inline-flex items-center gap-2 rounded-full  px-2.5 py-0.5 text-xs font-semibold transition-all duration-300 h-7 ${
             isActive
               ? "bg-sky-50 border-sky-200 text-sky-700"
               : "bg-indigo-50 ring-1 ring-indigo-100 text-slate-600"
           }`}
         >
-          <div className="flex items-center justify-center w-4 h-4">
-            {isActive ? <Waveform /> : null}
-            {teacherState === "thinking" && (
-              <span className="h-2 w-2 rounded-full bg-amber-500 animate-pulse" />
-            )}
-            {teacherState === "idle" && (
-              <span className="h-2 w-2 rounded-full bg-slate-400" />
-            )}
-            {teacherState === "explaining" && !isActive && (
-              <span className="h-2 w-2 rounded-full bg-sky-500" />
-            )}
-            {teacherState === "re-explaining" && !isActive && (
-              <span className="h-2 w-2 rounded-full bg-indigo-500" />
-            )}
-            {teacherState === "waiting" && (
-              <span className="h-2 w-2 rounded-full bg-slate-400 animate-pulse" />
-            )}
-          </div>
+          {isActive ? <Waveform /> : null}
+          {teacherState === "thinking" && (
+            <span className="h-2 w-2 rounded-full bg-amber-500 animate-pulse" />
+          )}
+          {teacherState === "idle" && (
+            <span className="h-2 w-2 rounded-full bg-slate-400" />
+          )}
+          {teacherState === "explaining" && !isActive && (
+            <span className="h-2 w-2 rounded-full bg-sky-500" />
+          )}
+          {teacherState === "re-explaining" && !isActive && (
+            <span className="h-2 w-2 rounded-full bg-indigo-500" />
+          )}
+          {teacherState === "waiting" && (
+            <span className="h-2 w-2 rounded-full bg-slate-400 animate-pulse" />
+          )}
           <span className="leading-none">{teacherLabel}</span>
         </div>
+        {audioPill && (
+          <div
+            title={audioConnReason ? `Reason: ${audioConnReason}` : undefined}
+            className={`h-7 mt-1 inline-flex items-center gap-2 rounded-full border px-2.5 py-0.5 text-xs font-semibold ${audioPill.cls}`}
+          >
+            <span className={`h-2 w-2 rounded-full ${audioPill.dot}`} />
+            {audioPill.text}
+          </div>
+        )}
         {audioBuffering && (
-          <div className="mt-1 inline-flex items-center gap-2 rounded-full border border-amber-200 bg-amber-50 px-2.5 py-0.5 text-xs font-semibold text-amber-800">
+          <div className="h-7 mt-1 inline-flex items-center gap-2 rounded-full border border-amber-200 bg-amber-50 px-2.5 py-0.5 text-xs font-semibold text-amber-800">
             <span className="h-2 w-2 rounded-full bg-amber-500" />
-            Audio buffering...
+            Audio Buffering...
           </div>
         )}
         <button

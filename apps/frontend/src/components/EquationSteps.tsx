@@ -1,6 +1,7 @@
-import type { ReexplanStyle } from "@shared/types";
+import type { ReexplanStyle, TeacherState } from "@shared/types";
 import type { UIEquationStep } from "../session/useLiveSession";
 import { Fragment, useEffect } from "react";
+import type { AudioPlaybackState } from "../audio/audioTypes";
 
 type EquationStepsProps = {
   steps: UIEquationStep[];
@@ -10,6 +11,10 @@ type EquationStepsProps = {
   animatedStepId: string | null;
   pendingStepId?: string;
   pendingStepLabel?: string;
+  teacherState?: TeacherState;
+  audioState?: AudioPlaybackState;
+  confusionPendingStepId?: string;
+  confusionConfirmedStepIndex?: number;
   onReExplain: (id: string, style?: ReexplanStyle) => void;
   onStepClick?: (id: string, rect: DOMRect) => void;
   showHeader?: boolean;
@@ -23,6 +28,10 @@ export function EquationSteps({
   animatedStepId,
   pendingStepId,
   pendingStepLabel,
+  teacherState,
+  audioState,
+  confusionPendingStepId,
+  confusionConfirmedStepIndex,
   onReExplain,
   onStepClick,
   showHeader = true,
@@ -34,6 +43,59 @@ export function EquationSteps({
       .getElementById(`step-${hoverStepId}`)
       ?.scrollIntoView({ block: "nearest", behavior: "smooth" });
   }, [hoverStepId]);
+
+  const stepIndexById = new Map(steps.map((step) => [step.id, step.uiIndex]));
+  const badgeStyles = {
+    muted: {
+      background: "rgba(148,163,184,0.2)",
+      color: "#475569",
+      border: "1px solid rgba(148,163,184,0.35)",
+    },
+    info: {
+      background: "rgba(59,130,246,0.14)",
+      color: "#1d4ed8",
+      border: "1px solid rgba(59,130,246,0.35)",
+    },
+    warning: {
+      background: "rgba(245,158,11,0.16)",
+      color: "#b45309",
+      border: "1px solid rgba(245,158,11,0.35)",
+    },
+    success: {
+      background: "rgba(16,185,129,0.16)",
+      color: "#047857",
+      border: "1px solid rgba(16,185,129,0.35)",
+    },
+  } as const;
+
+  const getStepBadge = (
+    stepId: string,
+  ): { label: string; tone: keyof typeof badgeStyles } | null => {
+    if (confusionPendingStepId && stepId === confusionPendingStepId) {
+      return { label: "⚠ Confusion detected (pending)", tone: "warning" };
+    }
+
+    const stepIndex = stepIndexById.get(stepId);
+    if (
+      stepIndex != null &&
+      confusionConfirmedStepIndex != null &&
+      stepIndex === confusionConfirmedStepIndex
+    ) {
+      return { label: "✓ Confirmed (confusion confirmed)", tone: "success" };
+    }
+
+    if (stepId !== activeStepId) return null;
+
+    if (teacherState === "re-explaining") {
+      return { label: "⟳ Re-explaining", tone: "info" };
+    }
+
+    if (audioState === "playing") {
+      return { label: "▶ Playing", tone: "info" };
+    }
+
+    return { label: "⏸ Paused", tone: "muted" };
+  };
 
   return (
     <div className={showHeader ? "mt-4" : undefined}>
@@ -52,6 +114,8 @@ export function EquationSteps({
         const isHovered = step.id === hoverStepId && !isActive;
         const isPending = step.id === pendingStepId && !isActive;
         const isAnimated = step.id === animatedStepId;
+        const stepBadge = getStepBadge(step.id);
+        const pendingLabelTop = stepBadge ? 30 : 8;
         const audioBadge =
           step.audioStatus === "ready"
             ? {
@@ -118,7 +182,7 @@ export function EquationSteps({
                 <div
                   style={{
                     position: "absolute",
-                    top: 8,
+                    top: pendingLabelTop,
                     right: 8,
                     padding: "2px 8px",
                     borderRadius: 999,
@@ -149,6 +213,23 @@ export function EquationSteps({
                     }}
                   >
                     {audioBadge.label}
+                  </span>
+                )}
+                {stepBadge && (
+                  <span
+                    style={{
+                      marginLeft: "auto",
+                      fontSize: 11,
+                      padding: "2px 8px",
+                      borderRadius: 999,
+                      fontWeight: 600,
+                      whiteSpace: "nowrap",
+                      background: badgeStyles[stepBadge.tone].background,
+                      color: badgeStyles[stepBadge.tone].color,
+                      border: badgeStyles[stepBadge.tone].border,
+                    }}
+                  >
+                    {stepBadge.label}
                   </span>
                 )}
               </div>

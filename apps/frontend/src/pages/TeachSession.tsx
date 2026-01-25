@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useLiveSession } from "../session/useLiveSession";
 import { useSpeechInput } from "../speech/useSpeechInput";
 import { Waveform } from "../components/WaveForm";
@@ -14,6 +14,7 @@ import { QuickSettings } from "../components/session/QuickSettings";
 import { InputBar } from "../components/session/InputBar";
 import { useDebugState } from "../state/debugState";
 import { useWebSocketState } from "../state/weSocketState";
+import { ConfusionConfirmToast } from "@/components/session/ConfusionConfirmationToast";
 
 const TEACHER_LABEL: Record<TeacherState, string> = {
   idle: "Idle",
@@ -28,8 +29,15 @@ export function TeachingSession() {
   const [input, setInput] = useState("");
   const [isListening, setIsListening] = useState(false);
   const [nowMs, setNowMs] = useState(() => Date.now());
+  const [confusionPending, setConfusionPending] = useState<{
+    offerId: string;
+    choice: "hint" | "explain";
+    startedAtMs: number;
+  } | null>(null);
   const { state: debugState } = useDebugState();
   const { reconnect } = useWebSocketState();
+
+  const waitingNudgeSentRef = useRef(false);
 
   const {
     chat,
@@ -46,21 +54,43 @@ export function TeachingSession() {
     startNewProblem,
     liveAudio,
     lastAudioChunkAtMs,
+    getWSCLient,
+    teacherMeta,
+    clearConfusionNudge,
   } = useLiveSession();
 
-  const { audioState, waveform, currentTimeMs, seekWithFadeMs, unlockAudio } = 
+  const { audioState, waveform, currentTimeMs, seekWithFadeMs, unlockAudio } =
     liveAudio;
+  const wsClient = getWSCLient();
 
   const { startListening, stopListening, micLevel, isUserSpeaking } =
-    useSpeechInput((text) => {
-      if (isListening) handleStudentSpeechFinal(text);
-      else sendUserMessage(text);
-    }, setIsListening);
-
+    useSpeechInput(
+      (text) => {
+        if (isListening) handleStudentSpeechFinal(text);
+        else sendUserMessage(text);
+      },
+      setIsListening,
+      {
+        getStepIdHint: () => activeStepId ?? null,
+        sendConfusion: (payload) => {
+          wsClient?.send({
+            type: "confusion_signal",
+            payload: {
+              source: payload.source,
+              reason: payload.reason,
+              severity: payload.severity,
+              text: payload.text,
+              stepIdHint: payload.stepIdHint ?? null,
+              observedAtMs: payload.observedAtMs,
+            },
+          });
+        },
+      },
+    );
 
   const stepTimeline = getStepTimeline();
   const activeStepId = stepTimeline.getActiveStepMonotonic(currentTimeMs);
-
+  const audioConnStatus = debugState.audioStatus; // "connecting" | "reconnecting" | "ready" | "closed" | undefined
 
   const {
     previewStepId,
@@ -89,24 +119,69 @@ export function TeachingSession() {
     activeStepId ?? null,
     currentTimeMs,
     seekWithFadeMs,
-    resumeFromStep
+    resumeFromStep,
   );
 
   const animatedStepId = hoverStepId ?? activeStepId ?? null;
+  const confusionPendingStepId = teacherMeta.confusionNudge?.stepId;
+  const confusionConfirmedStepIndex = debugState.confusionHandledStepIndex;
+
   const hoverLabel = hoverStep
     ? `Step ${hoverStep.uiIndex} \u2013 ${hoverStep.type}`
     : null;
+
   const visibleSteps = equationSteps.filter(
-    (step) => step.runId === currentProblemId
+    (step) => step.runId === currentProblemId,
   );
+
   const connectionStatus = debugState.isReconnecting
     ? "reconnecting"
     : debugState.connected
-    ? "connected"
-    : "disconnected";
+      ? "connected"
+      : "disconnected";
+
+  const expectsAudio =
+    teacherState === "explaining" || teacherState === "re-explaining";
+
   const isAudioBuffering =
-    teacherState === "explaining" &&
+    expectsAudio &&
     (lastAudioChunkAtMs == null || nowMs - lastAudioChunkAtMs > 1500);
+
+  useEffect(() => {
+    if (teacherState !== "waiting") waitingNudgeSentRef.current = false;
+  }, [teacherState]);
+
+  useEffect(() => {
+    if (teacherState !== "waiting") return;
+    if (!teacherMeta.awaitingAnswerSinceMs) return;
+    if (teacherMeta.confusionNudge) return;
+    if (waitingNudgeSentRef.current) return;
+
+    const t = window.setTimeout(() => {
+      // mark immediately so we can't double-fire
+      waitingNudgeSentRef.current = true;
+
+      wsClient?.send({
+        type: "confusion_signal",
+        payload: {
+          source: "system",
+          reason: "pause",
+          severity: "medium",
+          text: "student_silent_after_question",
+          stepIdHint: activeStepId ?? null,
+          observedAtMs: Date.now(),
+        },
+      });
+    }, 6500);
+
+    return () => window.clearTimeout(t);
+  }, [
+    teacherState,
+    activeStepId,
+    wsClient,
+    teacherMeta.awaitingAnswerSinceMs,
+    teacherMeta.confusionNudge,
+  ]);
 
   useEffect(() => {
     return () => {
@@ -124,11 +199,42 @@ export function TeachingSession() {
   }, []);
 
   useEffect(() => {
-  if (teacherState === "thinking" || teacherState === "explaining" || teacherState === "re-explaining") {
-    if (isListening) stopListening();
-  }
-}, [teacherState, isListening, stopListening]);
+    if (
+      teacherState === "thinking" ||
+      teacherState === "explaining" ||
+      teacherState === "re-explaining"
+    ) {
+      if (isListening) stopListening();
+    }
+  }, [teacherState, isListening, stopListening]);
 
+  //Auto-clear pending as soon as teacher responds
+  useEffect(() => {
+    if (!confusionPending) return;
+
+    // As soon as server starts responding, the UI should disappear cleanly
+    if (
+      teacherState === "thinking" ||
+      teacherState === "explaining" ||
+      teacherState === "re-explaining"
+    ) {
+      setConfusionPending(null);
+      clearConfusionNudge();
+    }
+  }, [teacherState, confusionPending, clearConfusionNudge]);
+
+  //unlock if server never responds
+  // (Prevents “stuck disabled toast” on stale offer / network hiccup)
+  useEffect(() => {
+    if (!confusionPending) return;
+
+    const t = window.setTimeout(() => {
+      // If we’re still pending after 2.5s, re-enable UI.
+      setConfusionPending(null);
+    }, 2500);
+
+    return () => window.clearTimeout(t);
+  }, [confusionPending]);
 
   const handleSend = async () => {
     await unlockAudio();
@@ -143,6 +249,78 @@ export function TeachingSession() {
     startListening();
   };
 
+  const handleStepClick = (stepId: string, rect: DOMRect) => {
+    const step = stepById.get(stepId);
+    if (!step) return;
+    if (activeStepId && stepId === activeStepId) {
+      setPendingSeek(null);
+      return;
+    }
+    const preferredX = rect.right + 12;
+    const preferredY = rect.top + rect.height / 2;
+    const x = Math.min(preferredX, window.innerWidth - 320);
+    const y = Math.min(Math.max(preferredY, 80), window.innerHeight - 180);
+    handleSetPendingSeekByStep({
+      stepId,
+      clientX: x,
+      clientY: y,
+    });
+  };
+
+  const handleConfusionHint = () => {
+    const n = teacherMeta.confusionNudge;
+    if (!n) return;
+
+    setConfusionPending({
+      offerId: n.offerId,
+      choice: "hint",
+      startedAtMs: Date.now(),
+    });
+
+    wsClient?.send({
+      type: "confusion_help_response",
+      payload: {
+        offerId: n.offerId,
+        stepId: n.stepId,
+        choice: "hint",
+        atMs: Date.now(),
+      },
+    });
+  };
+
+  const handleConfusionExplain = () => {
+    const n = teacherMeta.confusionNudge;
+    if (!n) return;
+
+    setConfusionPending({
+      offerId: n.offerId,
+      choice: "explain",
+      startedAtMs: Date.now(),
+    });
+
+    wsClient?.send({
+      type: "confusion_help_response",
+      payload: {
+        offerId: n.offerId,
+        stepId: n.stepId,
+        choice: "explain",
+        atMs: Date.now(),
+      },
+    });
+  };
+
+  const handleDismissNudge = () => {
+    const n = teacherMeta.confusionNudge;
+    if (n) {
+      wsClient?.send({
+        type: "confusion_nudge_dismissed",
+        payload: { stepId: n.stepId, atMs: Date.now() },
+      });
+    }
+    setConfusionPending(null);
+    clearConfusionNudge();
+  };
+
   return (
     <>
       <SessionShell
@@ -154,6 +332,8 @@ export function TeachingSession() {
             onReconnect={reconnect}
             onStartNewProblem={startNewProblem}
             audioBuffering={isAudioBuffering}
+            audioConnStatus={audioConnStatus}
+            audioConnReason={debugState.audioStatusReason ?? undefined}
           />
         }
         audioStrip={
@@ -186,27 +366,12 @@ export function TeachingSession() {
             hoverStepId={hoverStepId}
             animatedStepId={animatedStepId}
             pendingStepId={pendingSeek?.stepId}
+            teacherState={teacherState}
+            audioState={audioState}
+            confusionPendingStepId={confusionPendingStepId}
+            confusionConfirmedStepIndex={confusionConfirmedStepIndex}
             onReExplain={reExplainStep}
-            onStepClick={(stepId, rect) => {
-              const step = stepById.get(stepId);
-              if (!step) return;
-              if (activeStepId && stepId === activeStepId) {
-                setPendingSeek(null);
-                return;
-              }
-              const preferredX = rect.right + 12;
-              const preferredY = rect.top + rect.height / 2;
-              const x = Math.min(preferredX, window.innerWidth - 320);
-              const y = Math.min(
-                Math.max(preferredY, 80),
-                window.innerHeight - 180,
-              );
-              handleSetPendingSeekByStep({
-                stepId,
-                clientX: x,
-                clientY: y,
-              });
-            }}
+            onStepClick={handleStepClick}
           />
         }
         conversation={
@@ -231,6 +396,25 @@ export function TeachingSession() {
           />
         }
       />
+
+      {teacherMeta.confusionNudge && (
+        <ConfusionConfirmToast
+          stepIndex={teacherMeta.confusionNudge.stepIndex}
+          onHint={handleConfusionHint}
+          onExplain={handleConfusionExplain}
+          onDismiss={handleDismissNudge}
+          pendingChoice={
+            confusionPending?.offerId === teacherMeta.confusionNudge.offerId
+              ? confusionPending.choice
+              : null
+          }
+          autoHideMs={
+            confusionPending?.offerId === teacherMeta.confusionNudge.offerId
+              ? 9000 // give it longer while “working…”
+              : undefined
+          }
+        />
+      )}
 
       {isConfirmingSeek && (
         <div

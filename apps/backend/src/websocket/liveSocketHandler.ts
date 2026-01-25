@@ -9,44 +9,53 @@ export function liveSocketHandler(ws: WebSocket) {
     const msg = JSON.parse(raw.toString()) as ClientToServerMessage;
 
     switch (msg.type) {
-      case "user_message":
+      case "user_message": {
         const resume = Boolean(session.hasResumeContext());
         await session.handleUserMessage(msg.payload.text, resume);
         break;
+      }
 
       case "user_interrupt":
         session.interrupt();
         break;
 
       case "resume_request":
-        session.resumeFromInterruption({
+        await session.resumeFromInterruption({
           studentUtterance: msg.payload.studentUtterance,
           clientStepIndex: msg.payload.lastKnownStepIndex,
         });
         break;
 
       case "reexplain_step":
-        session.reExplainStep(msg.payload.stepId, msg.payload.style);
+        await session.reExplainStep(msg.payload.stepId, msg.payload.style);
         break;
 
       case "select_step_nl":
-        session.handleNaturalLanguageStepSelection(msg.payload.text);
+        await session.handleNaturalLanguageStepSelection(msg.payload.text);
         break;
 
       case "confusion_signal":
-        session.handleConfusion(msg.payload.text);
+        await session.handleConfusionSignal(msg.payload);
+        break;
+
+      case "confusion_nudge_dismissed":
+        session.dismissConfusionNudge(msg.payload);
+        break;
+
+      case "confusion_help_response":
+        await session.handleConfusionHelpResponse(msg.payload);
         break;
 
       case "resume_from_step":
-        session.resumeFromStep(msg.payload.stepId);
+        await session.resumeFromStep(msg.payload.stepId);
         break;
+
       case "reset_session":
         session.resetProblem();
         break;
 
       default:
         console.warn("Unknown message type:", msg);
-        
     }
   });
 }

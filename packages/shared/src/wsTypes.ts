@@ -1,7 +1,6 @@
 import type { EquationStep, ReexplanStyle } from "./types";
 import type { TeacherSignal } from "./teacherState";
 
-
 export type ResumeFromStepSource = "waveform";
 
 export type AudioStatus =
@@ -9,7 +8,19 @@ export type AudioStatus =
   | "ready"
   | "reconnecting"
   | "closed"
-  | "error";
+  | "error"
+  | "handshaking";
+
+export type ConfusionReason =
+  | "pause"
+  | "hesitation"
+  | "wrong_answer"
+  | "repeat_request"
+  | "general";
+
+export type ConfusionSource = "voice" | "text" | "video" | "system";
+
+export type ConfusionSeverity = "low" | "medium" | "high";
 
 export type ClientToServerMessage =
   | {
@@ -47,8 +58,19 @@ export type ClientToServerMessage =
   | {
       type: "confusion_signal";
       payload: {
-        text: string;
-        source: "voice" | "text";
+        source: ConfusionSource;
+        reason: ConfusionReason;
+        severity: ConfusionSeverity;
+        text?: string; // transcript or note
+        stepIdHint?: string | null; // active step if client knows it
+        observedAtMs: number;
+      };
+    }
+  | {
+      type: "confusion_nudge_dismissed";
+      payload: {
+        stepId: string;
+        atMs: number;
       };
     }
   | {
@@ -60,10 +82,31 @@ export type ClientToServerMessage =
     }
   | {
       type: "reset_session";
+    }
+  | {
+      type: "confusion_help_response";
+      payload: {
+        offerId: string; // NEW
+        stepId: string; // step being offered
+        choice: "hint" | "explain"; // NEW
+        atMs: number;
+      };
     };
 
 export type ServerToClientMessage =
   | TeacherSignal
+  | {
+      type: "confusion_nudge_offered";
+      payload: {
+        offerId: string;
+        stepId: string;
+        stepIndex: number;
+        source: ConfusionSource;
+        reason: ConfusionReason;
+        severity: ConfusionSeverity;
+        atMs: number; // Date.now() on server
+      };
+    }
   | {
       type: "audio_status";
       payload: {
@@ -127,5 +170,24 @@ export type ServerToClientMessage =
     }
   | {
       type: "ai_confusion_handled";
-      payload: { confusionHandledStepIndex: number };
+      payload: {
+        confusionHandledStepIndex: number;
+        source: ConfusionSource;
+        reason: ConfusionReason;
+        severity: ConfusionSeverity;
+        stepIdHint?: string | null;
+        atMs: number; // Date.now() on server
+      };
+    }
+  | {
+      type: "confusion_nudge_offered";
+      payload: {
+        offerId: string; // NEW
+        stepId: string;
+        stepIndex: number;
+        source: ConfusionSource;
+        reason: ConfusionReason;
+        severity: ConfusionSeverity;
+        atMs: number;
+      };
     };

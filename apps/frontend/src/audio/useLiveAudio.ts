@@ -45,20 +45,18 @@ export function useLiveAudio(timelineRef?: RefObject<AudioStepTimeline>) {
       const player = playerRef.current;
       if (!player) return;
 
+      const isFreeform =
+        typeof stepId === "string" && stepId.startsWith("__freeform__");
       const timeline = timelineRef?.current;
 
-      // If PCM, compute sample count from base64 payload (int16 mono)
-      // and register sample-accurate ranges BEFORE enqueue (order matters).
       const isPcm =
         mimeType?.startsWith("audio/pcm") ||
         mimeType?.includes("L16") ||
         mimeType?.includes("linear16");
 
-      if (timeline && stepId && isPcm) {
-        // base64 -> bytes length
+      // Only register timeline for real step audio
+      if (timeline && isPcm && stepId && !isFreeform) {
         let bytes = Uint8Array.from(atob(base64), (c) => c.charCodeAt(0));
-
-        // PCM must be even length (int16)
         if (bytes.length % 2 === 1) bytes = bytes.slice(0, bytes.length - 1);
 
         const chunkSamples = bytes.length / 2;
@@ -67,13 +65,12 @@ export function useLiveAudio(timelineRef?: RefObject<AudioStepTimeline>) {
         }
       }
 
-      // Still enqueue audio for playback (player does its own decoding)
       await player.enqueueChunk(base64, mimeType);
-
       setWaveform([...player.getWaveform()]);
     },
     [timelineRef],
   );
+
 
 
   const seekToMs = useCallback((targetMs: number) => {

@@ -4,10 +4,14 @@ import {
   TeacherSignal,
   TeacherState,
   EquationStep,
+  ConfusionReason,
+  ConfusionSeverity,
+  ConfusionSource,
+  ClientToServerMessage,
 } from "@shared/types";
 import { GeminiLiveAudioClient } from "./GeminiLiveAudioClient.js";
 import { StreamingStepExtractor } from "../StreamingStepExtractor.js";
-import { buildFreshPrompt, buildResumePrompt } from "../prompts/index.js";
+import { buildAdaptiveConfusionPrompt, buildConfusionNudgePrompt, buildFreshPrompt, buildResumePrompt, buildStepHintPrompt } from "../prompts/index.js";
 // import { resolveConfusedStep, resolveStepFromText } from "../stepResolution/index.js";
 import { GeminiLiveStreamingClient } from "../streaming/GeminiLiveStreamingClient.js";
 import { GeminiStreamingClient } from "../streaming/GeminiStreamingClient.js";
@@ -23,6 +27,36 @@ type ResumeContext = {
   lastCompletedStep?: EquationStep;
   fullExplanationSoFar: string;
 };
+
+type ConfusionSignalPayload = Extract<
+  ClientToServerMessage,
+  { type: "confusion_signal" }
+>["payload"];
+
+type PendingConfusionOffer = {
+  offerId: string;
+  stepId: string;
+  stepIndex: number;
+  offeredAtMs: number;
+  payload: ConfusionSignalPayload;
+};
+
+//TODO... 
+//This is not used currently, but will be useful for future features.
+function pickReexplainStyle(
+  reason: ConfusionReason,
+  severity: ConfusionSeverity,
+) {
+  // Map confusion -> explanation style
+  if (reason === "wrong_answer") return "example" as const;
+  if (reason === "repeat_request") return "simpler" as const;
+
+  // pause/hesitation: prioritize slower + step-by-step language (we’ll do that in the prompt)
+  if (reason === "pause" || reason === "hesitation") return "simpler" as const;
+
+  // general confusion
+  return severity === "high" ? ("visual" as const) : ("simpler" as const);
+}
 
 export class GeminiLiveSession {
   private streamingClient: GeminiStreamingClient;
@@ -45,6 +79,15 @@ export class GeminiLiveSession {
 
   private spokenStepIds = new Set<string>();
   private lastSentStepId: string | null = null;
+
+  private pendingOffer: PendingConfusionOffer | null = null;
+
+  private nudgeCooldownByStepId = new Map<string, number>();
+
+  // Tunables
+  private static readonly PENDING_OFFER_TTL_MS = 12_000; // offer expires if not acted on
+  private static readonly DISMISS_COOLDOWN_MS = 25_000; // don't re-offer same step if dismissed
+  private static readonly OFFER_REPEAT_GUARD_MS = 900; // your existing “same step pending” guard
 
   constructor(private ws: WebSocket) {
     this.streamingClient = new GeminiLiveStreamingClient();
@@ -125,10 +168,21 @@ export class GeminiLiveSession {
     if (signal) this.send(signal);
   }
 
+  //TODO... is handleUserMessage properly implemented, I just removed
+  //this block -> if (this.pendingOffer && this.isAffirmativeHelp(text)) { ... }
   async handleUserMessage(text: string, forceResumeMode = false) {
     try {
-      this.interrupt();
+      if (this.pendingOffer) {
+        const age = Date.now() - this.pendingOffer.offeredAtMs;
+        if (age > GeminiLiveSession.PENDING_OFFER_TTL_MS) {
+          this.pendingOffer = null;
+        }
+      }
 
+      // If they typed something else, drop the pending offer
+      this.pendingOffer = null;
+
+      this.interrupt();
       this.setState("thinking", { type: "teacher_thinking" });
 
       const isContinuing =
@@ -213,7 +267,7 @@ export class GeminiLiveSession {
     this.isSpeaking = false;
     this.stepAudioTracker.interrupt();
     this.audioClock.reset();
-    this.audioClient.stop();
+    this.audioClient.haltPlayback();
 
     this.send({ type: "ai_interrupted" });
   }
@@ -271,7 +325,7 @@ export class GeminiLiveSession {
         stepIndex: step.index,
       });
 
-      await this.streamExplanation(prompt);
+      await this.streamExplanation(prompt, { audioMode: "step" });
 
       this.send({
         type: "ai_reexplained",
@@ -300,26 +354,254 @@ export class GeminiLiveSession {
     }
   }
 
-  async handleConfusion(text: string) {
-    try {
-      const steps = this.stepExtractor.getSteps();
-      const step = resolveConfusedStep(text, steps, this.currentSpokenStepId);
+  // “yes/help/hint/explain” detector for voice/text
+  private isAffirmativeHelp(text: string): boolean {
+    const t = text.toLowerCase().trim();
+    return (
+      t === "yes" ||
+      t.startsWith("yes ") ||
+      t.includes("help") ||
+      t.includes("hint") ||
+      t.includes("explain") ||
+      t.includes("re-explain") ||
+      t.includes("again") ||
+      t.includes("i'm stuck") ||
+      t.includes("im stuck")
+    );
+  }
 
+  // IMPORTANT: avoid “=” in nudge prompts, otherwise your step extractor will create fake steps.
+  private stripEqualsLines(input: string): string {
+    return input
+      .split("\n")
+      .filter((line) => !line.includes("="))
+      .join("\n")
+      .replace(/=/g, "") // last resort: remove stray equals
+      .trim();
+  }
+
+  async handleConfusionSignal(payload: ConfusionSignalPayload) {
+    console.log(
+      "GeminiLiveSession::handleConfusionSignal called",
+      JSON.stringify(payload, null, 2),
+    );
+    try {
+      this.pruneCooldowns(Date.now());
+      const steps = this.stepExtractor.getSteps();
+
+      // 1) Prefer explicit hint from client
+      let step =
+        (payload.stepIdHint
+          ? steps.find((s) => s.id === payload.stepIdHint)
+          : null) ?? null;
+
+      // 2) Otherwise fall back to resolver (uses currentSpokenStepId)
+      if (!step) {
+        step =
+          resolveConfusedStep(
+            payload.text ?? "",
+            steps,
+            this.currentSpokenStepId,
+          ) ?? null;
+      }
+
+      // 3) Safe fallback
       if (!step) {
         await this.handleUserMessage(
-          "I can slow down or explain a step again — which part is confusing?",
+          "No worries — tell me which step confused you (like 'step 2'), and I'll help.",
         );
         return;
       }
 
-      await this.reExplainStep(step.id, "simpler");
+      const now = Date.now();
+
+      // if step is in cooldown, skip the “nudge offer” stage
+      const cooldownUntil = this.nudgeCooldownByStepId.get(step.id) ?? 0;
+      const inCooldown = now < cooldownUntil;
+
+      const isPauseOrHesitation =
+        payload.reason === "pause" || payload.reason === "hesitation";
+
+      const shouldOfferFirst =
+        isPauseOrHesitation && payload.severity !== "high" && !inCooldown;
+
+      // ---- STAGE 1: Nudge first (human-like) ----
+      if (shouldOfferFirst) {
+        const sameStepPending = this.pendingOffer?.stepId === step.id;
+
+        // If we already offered and we got another confusion signal on the same step soon,
+        // then escalate to full re-explain.
+        if (sameStepPending) {
+          const elapsed = now - (this.pendingOffer?.offeredAtMs ?? 0);
+          if (elapsed >= 900) {
+            // escalate
+            this.pendingOffer = null;
+          } else {
+            // too soon; ignore spam
+            return;
+          }
+        } else {
+          const offerId = randomUUID();
+          // Offer help (don’t re-explain immediately)
+          this.pendingOffer = {
+            offerId,
+            stepId: step.id,
+            stepIndex: step.index,
+            offeredAtMs: now,
+            payload,
+          };
+
+          this.send({
+            type: "confusion_nudge_offered",
+            payload: {
+              offerId,
+              stepId: step.id,
+              stepIndex: step.index,
+              source: payload.source,
+              reason: payload.reason,
+              severity: payload.severity,
+              atMs: Date.now(),
+            },
+          });
+
+          // IMPORTANT: interrupt any current speech first
+          this.interrupt();
+
+          const prompt = buildConfusionNudgePrompt({
+            stepNumber: step.index + 1,
+            reason: payload.reason,
+            severity: payload.severity,
+            source: payload.source,
+            studentText: payload.text,
+            // Remove '=' so we don’t accidentally create a new equation step
+            stepHintText: this.stripEqualsLines(step.text),
+          });
+
+          await this.streamExplanation(prompt, {
+            audioMode: "freeform",
+          });
+
+          // NOTE: we intentionally do NOT send ai_confusion_handled here,
+          // because we didn’t “handle” it yet — we only offered help.
+          return;
+        }
+        // if we cleared pendingOffer above, we fall through to full re-explain
+      }
+
+      // ---- STAGE 2: Full adaptive re-explain ----
+      this.pendingOffer = null;
+
+      this.interrupt();
+
+      this.setState("re-explaining", {
+        type: "teacher_reexplaining",
+        stepIndex: step.index,
+      });
+
+      const prompt = buildAdaptiveConfusionPrompt({
+        stepText: step.text,
+        stepEquation: step.equation,
+        stepNumber: step.index + 1,
+        reason: payload.reason,
+        severity: payload.severity,
+        source: payload.source,
+        studentText: payload.text,
+      });
+
+      await this.streamExplanation(prompt);
 
       this.send({
         type: "ai_confusion_handled",
-        payload: { confusionHandledStepIndex: step.index },
+        payload: {
+          confusionHandledStepIndex: step.index,
+          source: payload.source,
+          reason: payload.reason,
+          severity: payload.severity,
+          stepIdHint: payload.stepIdHint ?? null,
+          atMs: Date.now(),
+        },
       });
     } catch (err) {
-      console.error("Error in handleConfusion:", err);
+      console.error("Error in handleConfusionSignal:", err);
+    }
+  }
+
+  async handleConfusionHelpResponse(payload: {
+    offerId: string;
+    stepId: string;
+    choice: "hint" | "explain";
+    atMs: number;
+  }) {
+    // Must match current offer (prevents stale UI clicks)
+    const offer = this.pendingOffer;
+    if (!offer) return;
+    if (offer.offerId !== payload.offerId) return;
+    if (offer.stepId !== payload.stepId) return;
+
+    // TTL safety (extra guard)
+    const age = Date.now() - offer.offeredAtMs;
+    if (age > GeminiLiveSession.PENDING_OFFER_TTL_MS) {
+      this.pendingOffer = null;
+      return;
+    }
+
+    // Resolve step from current extractor snapshot
+    const steps = this.stepExtractor.getSteps();
+    const step = steps.find((s) => s.id === offer.stepId) ?? null;
+
+    // Clear pending offer no matter what
+    this.pendingOffer = null;
+
+    if (!step) {
+      // fail safely: ask for which step
+      await this.handleUserMessage("Which step should I help with?");
+      return;
+    }
+
+    // Always interrupt before speaking
+    this.interrupt();
+
+    if (payload.choice === "hint") {
+      const prompt = buildStepHintPrompt({
+        stepNumber: step.index + 1,
+        stepHintText: this.stripEqualsLines(step.text),
+        reason: offer.payload.reason,
+        severity: offer.payload.severity,
+        source: offer.payload.source,
+        studentText: offer.payload.text,
+      });
+
+      await this.streamExplanation(prompt, { audioMode: "freeform" });
+      return;
+    }
+
+    // choice === "explain" => escalate to full adaptive re-explain
+    await this.handleConfusionSignal({
+      ...offer.payload,
+      // ensure we target the right step
+      stepIdHint: step.id,
+      // if it was "low" from pause/hesitation, bump a bit so prompt takes it seriously
+      severity:
+        offer.payload.severity === "low" ? "medium" : offer.payload.severity,
+    });
+  }
+
+  dismissConfusionNudge(payload: { stepId: string; atMs: number }) {
+    // Only clear if it matches current offer
+    if (this.pendingOffer?.stepId === payload.stepId) {
+      this.pendingOffer = null;
+    }
+
+    // don’t re-offer for this step for a while
+    this.nudgeCooldownByStepId.set(
+      payload.stepId,
+      Date.now() + GeminiLiveSession.DISMISS_COOLDOWN_MS,
+    );
+  }
+
+  private pruneCooldowns(now: number) {
+    for (const [k, until] of this.nudgeCooldownByStepId) {
+      if (until <= now) this.nudgeCooldownByStepId.delete(k);
     }
   }
 
@@ -340,7 +622,10 @@ export class GeminiLiveSession {
     };
   }
 
-  private async streamExplanation(prompt: string) {
+  private async streamExplanation(
+    prompt: string,
+    opts?: { audioMode?: "step" | "freeform"; emitTeacherExplaining?: boolean },
+  ) {
     try {
       this.abortController = new AbortController();
       this.aborted = false;
@@ -350,6 +635,7 @@ export class GeminiLiveSession {
       // FIX 2: Re-enable audio if it was stopped by interrupt
       this.audioClient.resume();
       void this.audioClient.prewarm();
+      let freeformFinal = "";
 
       const stream = await this.streamingClient.streamText(prompt, {
         signal: this.abortController.signal,
@@ -367,11 +653,12 @@ export class GeminiLiveSession {
 
           if (!started) {
             started = true;
-            this.setState("explaining", {
-              type: "teacher_explaining",
-              stepIndex: this.resumeContext.lastCompletedStep?.index,
-            });
-
+            if (opts?.emitTeacherExplaining !== false) {
+              this.setState("explaining", {
+                type: "teacher_explaining",
+                stepIndex: this.resumeContext.lastCompletedStep?.index,
+              });
+            }
             // Optional: Add a separator in history for readability
             this.resumeContext.fullExplanationSoFar += "\n\n[Teacher]: ";
           }
@@ -382,6 +669,12 @@ export class GeminiLiveSession {
             type: "ai_message_chunk",
             payload: { textDelta: chunk.text, isFinal: false },
           });
+
+          if (opts?.audioMode === "freeform") {
+            freeformFinal += chunk.text;
+            // IMPORTANT: do NOT run stepExtractor for freeform mode
+            continue;
+          }
 
           const step = this.stepExtractor.pushText(chunk.text);
 
@@ -411,7 +704,6 @@ export class GeminiLiveSession {
             // 🔊 Step-aware audio
             await this.audioClient.speakStep(step.id, step.text);
           }
-
         }
       } finally {
         this.isSpeaking = false;
@@ -425,6 +717,13 @@ export class GeminiLiveSession {
           type: "ai_message",
           payload: { text: this.resumeContext.fullExplanationSoFar },
         });
+
+        if (!this.aborted && opts?.audioMode === "freeform") {
+          const spoken = freeformFinal.trim();
+          if (spoken) {
+            await this.audioClient.speakFreeform(spoken);
+          }
+        }
 
         if (!this.aborted) {
           this.setState("waiting", { type: "teacher_waiting" });

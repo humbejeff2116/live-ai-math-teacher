@@ -20,6 +20,8 @@ export type DebugState = {
   audioStatusReason?: string | null;
   audioStatusAtMs?: number;
   confusionCount?: number;
+  lastTranscript?: string;
+  lastSpeechError?: string;
 };
 
 export const DebugContext = createContext<{

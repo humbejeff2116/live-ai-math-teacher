@@ -1,8 +1,9 @@
 import { useEffect, useMemo, useState } from "react";
-import type { ReexplanStyle } from "@shared/types";
+import type { ReexplanStyle, TeacherState } from "@shared/types";
 import { EquationSteps } from "../EquationSteps";
 import { Infinity as InfinityLucide } from "lucide-react";
 import type { UIEquationStep } from "../../session/useLiveSession";
+import type { AudioPlaybackState } from "../../audio/audioTypes";
 
 type StepsRailProps = {
   steps: UIEquationStep[];
@@ -11,6 +12,10 @@ type StepsRailProps = {
   hoverStepId: string | null;
   animatedStepId: string | null;
   pendingStepId?: string;
+  teacherState?: TeacherState;
+  audioState?: AudioPlaybackState;
+  confusionPendingStepId?: string;
+  confusionConfirmedStepIndex?: number;
   onStepClick?: (id: string, rect: DOMRect) => void;
   onReExplain: (id: string, style?: ReexplanStyle) => void;
 };
@@ -24,6 +29,10 @@ export function StepsRail({
   hoverStepId,
   animatedStepId,
   pendingStepId,
+  teacherState,
+  audioState,
+  confusionPendingStepId,
+  confusionConfirmedStepIndex,
   onStepClick,
   onReExplain,
 }: StepsRailProps) {
@@ -86,6 +95,10 @@ export function StepsRail({
               animatedStepId={animatedStepId}
               pendingStepId={pendingStepId}
               pendingStepLabel={pendingLabel}
+              teacherState={teacherState}
+              audioState={audioState}
+              confusionPendingStepId={confusionPendingStepId}
+              confusionConfirmedStepIndex={confusionConfirmedStepIndex}
               onReExplain={onReExplain}
               onStepClick={onStepClick}
               showHeader={false}
