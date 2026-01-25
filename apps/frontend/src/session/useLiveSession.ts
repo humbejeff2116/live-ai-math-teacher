@@ -11,6 +11,7 @@ import { useWebSocketState } from "../state/weSocketState";
 import { useTeacherState } from "./useTeacherState";
 import { AudioStepTimeline } from "../audio/audioStepTimeLine";
 import { classifyConfusion } from "./session.utils";
+import { logEvent } from "../lib/debugTimeline";
 
 export function useLiveSession() {
   const sendTimeRef = useRef<number | null>(null);
@@ -100,6 +101,12 @@ export function useLiveSession() {
         stepTimelineRef.current.getActiveStepMonotonic(liveAudio.currentTimeMs) ??
         null;
       const { reason, severity } = classifyConfusion(text);
+      logEvent("ConfusionSignal", {
+        source: "text",
+        reason,
+        severity,
+        stepId: stepIdHint ?? undefined,
+      });
       wsClientRef.current?.send({
         type: "confusion_signal",
         payload: {
@@ -210,6 +217,8 @@ export function useHandleMessage(
   playChunk: (b64: string, stepId?: string, mimeType?: string) => void,
 ) {
   const DEBUG_EQUATION_STEPS = true;
+  const stepIndexByIdRef = useRef(new Map<string, number>());
+  const lastTeacherSignalRef = useRef<string | null>(null);
   const [chat, setChat] = useState<ChatMessage[]>([]);
   const [equationSteps, setEquationSteps] = useState<UIEquationStep[]>([]);
   const [streamingText, setStreamingText] = useState("");
@@ -297,6 +306,25 @@ export function useHandleMessage(
       };
 
       updateLatencyOnce();
+
+      if (message.type === "teacher_reexplaining") {
+        logEvent("ReexplainStarted", {
+          step: message.stepIndex != null ? message.stepIndex + 1 : undefined,
+        });
+        lastTeacherSignalRef.current = "re-explaining";
+      } else if (message.type === "teacher_waiting") {
+        if (lastTeacherSignalRef.current === "re-explaining") {
+          logEvent("ReexplainEnded");
+        }
+        lastTeacherSignalRef.current = "waiting";
+      } else if (message.type === "teacher_explaining") {
+        lastTeacherSignalRef.current = "explaining";
+      } else if (message.type === "teacher_thinking") {
+        lastTeacherSignalRef.current = "thinking";
+      } else if (message.type === "teacher_interrupted") {
+        lastTeacherSignalRef.current = "interrupted";
+      }
+
       dispatchTeacher(message);
 
       if (message.type === "audio_status") {
@@ -332,6 +360,13 @@ export function useHandleMessage(
           message.payload.stepId,
           message.payload.atMs,
         );
+        const stepIndex = stepIndexByIdRef.current.get(
+          message.payload.stepId,
+        );
+        logEvent("StepStarted", {
+          step: stepIndex != null ? stepIndex + 1 : undefined,
+          stepId: message.payload.stepId,
+        });
       }
 
       if (message.type === "step_audio_end") {
@@ -348,6 +383,7 @@ export function useHandleMessage(
 
       if (message.type === "equation_step") {
         lastStepIndexRef.current = message.payload.index;
+        stepIndexByIdRef.current.set(message.payload.id, message.payload.index);
 
         setEquationSteps((prev) => {
           const runId = currentProblemIdRef.current;

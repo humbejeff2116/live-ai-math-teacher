@@ -3,6 +3,7 @@ import { SpeechRecognizer } from "./speechRecognizer";
 import { useDebugState } from "../state/debugState";
 import { useWebSocketState } from "../state/weSocketState";
 import type { ConfusionReason, ConfusionSeverity } from "@shared/types";
+import { logEvent } from "../lib/debugTimeline";
 
 // Match shared types loosely but keep this file standalone
 type ConfusionPayload = {
@@ -178,6 +179,10 @@ export function useSpeechInput(
         lastLowBurstAtMsRef.current = 0;
 
         const stepIdHint = opts.getStepIdHint?.() ?? null;
+        logEvent("HesitationDetected", {
+          durationMs: Math.round(silentFor),
+          stepId: stepIdHint ?? undefined,
+        });
         opts.sendConfusion({
           source: "voice",
           reason: "hesitation",
@@ -194,6 +199,10 @@ export function useSpeechInput(
         lastConfusionSentAtMsRef.current = now;
 
         const stepIdHint = opts.getStepIdHint?.() ?? null;
+        logEvent("PauseDetected", {
+          durationMs: Math.round(silentFor),
+          stepId: stepIdHint ?? undefined,
+        });
         opts.sendConfusion({
           source: "voice",
           reason: "pause",

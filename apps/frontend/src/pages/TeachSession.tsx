@@ -15,6 +15,7 @@ import { InputBar } from "../components/session/InputBar";
 import { useDebugState } from "../state/debugState";
 import { useWebSocketState } from "../state/weSocketState";
 import { ConfusionConfirmToast } from "@/components/session/ConfusionConfirmationToast";
+import { logEvent } from "../lib/debugTimeline";
 
 const TEACHER_LABEL: Record<TeacherState, string> = {
   idle: "Idle",
@@ -41,6 +42,7 @@ export function TeachingSession() {
   const { reconnect } = useWebSocketState();
 
   const waitingNudgeSentRef = useRef(false);
+  const lastAudioStateRef = useRef<string | null>(null);
 
   const {
     chat,
@@ -185,6 +187,14 @@ export function TeachingSession() {
     (lastAudioChunkAtMs == null || nowMs - lastAudioChunkAtMs > 1500);
 
   useEffect(() => {
+    if (lastAudioStateRef.current === audioState) return;
+    if (audioState === "playing") logEvent("AudioPlay");
+    if (audioState === "idle") logEvent("AudioPause");
+    if (audioState === "interrupted") logEvent("AudioInterrupted");
+    lastAudioStateRef.current = audioState;
+  }, [audioState]);
+
+  useEffect(() => {
     if (teacherState !== "waiting") waitingNudgeSentRef.current = false;
   }, [teacherState]);
 
@@ -204,6 +214,17 @@ export function TeachingSession() {
       // mark immediately so we can't double-fire
       waitingNudgeSentRef.current = true;
 
+      const observedAtMs = Date.now();
+      const pauseDurationMs = teacherMeta.awaitingAnswerSinceMs
+        ? observedAtMs - teacherMeta.awaitingAnswerSinceMs
+        : undefined;
+      logEvent("ConfusionSignal", {
+        source: "system",
+        reason: "pause",
+        severity: "medium",
+        durationMs: pauseDurationMs,
+      });
+
       wsClient?.send({
         type: "confusion_signal",
         payload: {
@@ -212,7 +233,7 @@ export function TeachingSession() {
           severity: "medium",
           text: "student_silent_after_question",
           stepIdHint: activeStepId ?? null,
-          observedAtMs: Date.now(),
+          observedAtMs,
         },
       });
     }, 6500);
@@ -320,6 +341,12 @@ export function TeachingSession() {
       startedAtMs: Date.now(),
     });
 
+    logEvent("ConfusionConfirmed", {
+      choice: "hint",
+      step: n.stepIndex + 1,
+      stepId: n.stepId,
+    });
+
     wsClient?.send({
       type: "confusion_help_response",
       payload: {
@@ -339,6 +366,12 @@ export function TeachingSession() {
       offerId: n.offerId,
       choice: "explain",
       startedAtMs: Date.now(),
+    });
+
+    logEvent("ConfusionConfirmed", {
+      choice: "explain",
+      step: n.stepIndex + 1,
+      stepId: n.stepId,
     });
 
     wsClient?.send({

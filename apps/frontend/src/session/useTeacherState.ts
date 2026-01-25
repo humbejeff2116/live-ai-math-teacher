@@ -1,6 +1,7 @@
 // useTeacherState.ts
 import type { ConfusionReason, ConfusionSeverity, ConfusionSource, ServerToClientMessage, TeacherState } from "@shared/types";
 import { useCallback, useReducer } from "react";
+import { logEvent } from "../lib/debugTimeline";
 
 type TeacherMeta = {
   // Did the last teacher utterance look like a question?
@@ -124,6 +125,11 @@ function reducer(model: TeacherModel, action: Action): TeacherModel {
         }
 
         case "confusion_nudge_offered": {
+          logEvent("NudgeShown", {
+            step: msg.payload.stepIndex + 1,
+            reason: msg.payload.reason,
+            source: msg.payload.source,
+          });
           return {
             ...model,
             meta: {
