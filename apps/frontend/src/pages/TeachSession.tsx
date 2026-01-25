@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useLiveSession } from "../session/useLiveSession";
 import { useSpeechInput } from "../speech/useSpeechInput";
 import { Waveform } from "../components/WaveForm";
@@ -39,11 +39,19 @@ export function TeachingSession() {
     startedAtMs: number;
   } | null>(null);
   const [reExplainStepId, setReExplainStepId] = useState<string | null>(null);
+  const [actionToast, setActionToast] = useState<{
+    id: number;
+    message: string;
+  } | null>(null);
   const { state: debugState } = useDebugState();
   const { reconnect } = useWebSocketState();
 
   const waitingNudgeSentRef = useRef(false);
   const lastAudioStateRef = useRef<string | null>(null);
+  const confusionReExplainPendingRef = useRef<number | null>(null);
+  const lastConfusionReExplainToastRef = useRef<number | null>(null);
+  const actionToastTimeoutRef = useRef<number | null>(null);
+  const actionToastCounterRef = useRef(0);
 
   const {
     chat,
@@ -256,6 +264,10 @@ export function TeachingSession() {
         window.clearTimeout(seekToastTimeoutRef.current);
         seekToastTimeoutRef.current = null;
       }
+      if (actionToastTimeoutRef.current != null) {
+        window.clearTimeout(actionToastTimeoutRef.current);
+        actionToastTimeoutRef.current = null;
+      }
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
@@ -263,6 +275,17 @@ export function TeachingSession() {
   useEffect(() => {
     const interval = window.setInterval(() => setNowMs(Date.now()), 300);
     return () => window.clearInterval(interval);
+  }, []);
+
+  const showActionToast = useCallback((message: string) => {
+    const toastId = (actionToastCounterRef.current += 1);
+    setActionToast({ id: toastId, message });
+    if (actionToastTimeoutRef.current != null) {
+      window.clearTimeout(actionToastTimeoutRef.current);
+    }
+    actionToastTimeoutRef.current = window.setTimeout(() => {
+      setActionToast((prev) => (prev?.id === toastId ? null : prev));
+    }, 1600);
   }, []);
 
   useEffect(() => {
@@ -274,6 +297,18 @@ export function TeachingSession() {
       if (isListening) stopListening();
     }
   }, [teacherState, isListening, stopListening]);
+
+  useEffect(() => {
+    const reexplainedIndex = debugState.reexplainedStepIndex;
+    if (reexplainedIndex == null) return;
+    if (confusionReExplainPendingRef.current == null) return;
+    if (confusionReExplainPendingRef.current !== reexplainedIndex) return;
+    if (lastConfusionReExplainToastRef.current === reexplainedIndex) return;
+
+    showActionToast("Got it — continuing.");
+    lastConfusionReExplainToastRef.current = reexplainedIndex;
+    confusionReExplainPendingRef.current = null;
+  }, [debugState.reexplainedStepIndex, showActionToast]);
 
   useEffect(() => {
     if (teacherState !== "re-explaining") {
@@ -371,6 +406,7 @@ export function TeachingSession() {
     const n = teacherMeta.confusionNudge;
     if (!n) return;
     setReExplainStepId(n.stepId);
+    confusionReExplainPendingRef.current = n.stepIndex;
 
     setConfusionPending({
       offerId: n.offerId,
@@ -399,6 +435,8 @@ export function TeachingSession() {
     setReExplainStepId(stepId);
     reExplainStep(stepId, style);
   };
+
+  const toastToShow = actionToast ?? seekToast;
 
   const handleDismissNudge = () => {
     const n = teacherMeta.confusionNudge;
@@ -572,7 +610,7 @@ export function TeachingSession() {
         </div>
       )}
 
-      {seekToast && (
+      {toastToShow && (
         <div
           style={{
             position: "fixed",
@@ -589,7 +627,7 @@ export function TeachingSession() {
             transition: "opacity 160ms ease",
           }}
         >
-          {seekToast.message}
+          {toastToShow?.message}
         </div>
       )}
 
