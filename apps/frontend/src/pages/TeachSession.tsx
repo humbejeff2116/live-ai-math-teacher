@@ -52,6 +52,8 @@ export function TeachingSession() {
   const lastConfusionReExplainToastRef = useRef<number | null>(null);
   const actionToastTimeoutRef = useRef<number | null>(null);
   const actionToastCounterRef = useRef(0);
+  const stepConfusedAtRef = useRef<Map<string, number>>(new Map());
+  const SOFT_MEMORY_MS = 45_000;
 
   const {
     chat,
@@ -214,6 +216,28 @@ export function TeachingSession() {
       setConfusionCooldownUntilMs(null);
     }
   }, [teacherMeta.confusionNudge]);
+
+  const isStepRecentlyConfused = useCallback((stepId: string) => {
+    const lastConfusedAt = stepConfusedAtRef.current.get(stepId);
+    return (
+      lastConfusedAt != null && Date.now() - lastConfusedAt < SOFT_MEMORY_MS
+    );
+  }, []);
+
+  const markStepConfused = useCallback((stepId: string) => {
+    stepConfusedAtRef.current.set(stepId, Date.now());
+  }, []);
+
+  useEffect(() => {
+    const nudge = teacherMeta.confusionNudge;
+    if (!nudge) return;
+    if (!isStepRecentlyConfused(nudge.stepId)) return;
+    clearConfusionNudge();
+    wsClient?.send({
+      type: "confusion_nudge_dismissed",
+      payload: { stepId: nudge.stepId, atMs: Date.now() },
+    });
+  }, [teacherMeta.confusionNudge, clearConfusionNudge, isStepRecentlyConfused, wsClient]);
 
   useEffect(() => {
     if (teacherState !== "waiting") return;
@@ -378,6 +402,7 @@ export function TeachingSession() {
   const handleConfusionHint = () => {
     const n = teacherMeta.confusionNudge;
     if (!n) return;
+    markStepConfused(n.stepId);
 
     setConfusionPending({
       offerId: n.offerId,
@@ -407,6 +432,7 @@ export function TeachingSession() {
     if (!n) return;
     setReExplainStepId(n.stepId);
     confusionReExplainPendingRef.current = n.stepIndex;
+    markStepConfused(n.stepId);
 
     setConfusionPending({
       offerId: n.offerId,
