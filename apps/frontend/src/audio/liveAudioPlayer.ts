@@ -26,6 +26,7 @@ export class LiveAudioPlayer {
   private onStop?: () => void;
 
   private unlocked = false;
+  private playbackRate = 1;
 
   // Stable scheduler cursor in AudioContext time (seconds)
   private nextPlayTimeSec: number | null = null;
@@ -56,6 +57,11 @@ export class LiveAudioPlayer {
 
     this.onStart = onStart;
     this.onStop = onStop;
+  }
+
+  setPlaybackRate(rate: number) {
+    const safeRate = Math.max(0.9, Math.min(1.05, rate));
+    this.playbackRate = safeRate;
   }
 
   async unlock(): Promise<boolean> {
@@ -306,6 +312,7 @@ export class LiveAudioPlayer {
 
       const source = ctx.createBufferSource();
       source.buffer = buffer;
+      source.playbackRate.value = this.playbackRate;
       source.connect(this.analyser);
       source.start(startAt);
 

@@ -202,6 +202,7 @@ export function QuickSettings() {
             />
           </label>
 
+        {/* This section breaks out */}
           <div className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-3">
             <div className="flex items-center justify-between">
               <div className="text-xs font-semibold text-slate-700">

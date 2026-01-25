@@ -12,7 +12,10 @@ import { useTeacherState } from "./useTeacherState";
 import { AudioStepTimeline } from "../audio/audioStepTimeLine";
 import { classifyConfusion } from "./session.utils";
 import { logEvent } from "../lib/debugTimeline";
-import { recordEvent as recordPersonalizationEvent } from "../personalization";
+import {
+  getDecision as getPersonalizationDecision,
+  recordEvent as recordPersonalizationEvent,
+} from "../personalization";
 
 export function useLiveSession() {
   const sendTimeRef = useRef<number | null>(null);
@@ -49,6 +52,8 @@ export function useLiveSession() {
     liveAudio.playChunk,
   );
 
+  const { setPlaybackRate } = liveAudio;
+
   
 
   useEffect(() => {
@@ -57,6 +62,17 @@ export function useLiveSession() {
     });
     return unsubscribe;
   }, [subscribe, handleMessage]);
+
+  useEffect(() => {
+    if (teacherState !== "re-explaining") {
+      setPlaybackRate(1);
+      return;
+    }
+    const decision = getPersonalizationDecision();
+    const pace = decision.settings.pace;
+    const targetRate = pace === "slow" ? 0.95 : 1;
+    setPlaybackRate(targetRate);
+  }, [setPlaybackRate, teacherState]);
 
   // 3. Cleanup logic: Stop audio/timers when the hook unmounts
   useEffect(() => {

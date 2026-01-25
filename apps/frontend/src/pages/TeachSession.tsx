@@ -16,7 +16,10 @@ import { useDebugState } from "../state/debugState";
 import { useWebSocketState } from "../state/weSocketState";
 import { ConfusionConfirmToast } from "@/components/session/ConfusionConfirmationToast";
 import { logEvent } from "../lib/debugTimeline";
-import { recordEvent as recordPersonalizationEvent } from "../personalization";
+import {
+  getDecision as getPersonalizationDecision,
+  recordEvent as recordPersonalizationEvent,
+} from "../personalization";
 
 const TEACHER_LABEL: Record<TeacherState, string> = {
   idle: "Idle",
@@ -559,7 +562,10 @@ export function TeachingSession() {
         atMs: Date.now(),
       });
     }
-    setConfusionCooldownUntilMs(Date.now() + 25_000);
+    const decision = getPersonalizationDecision();
+    const seconds = decision.nudgePolicy.minSecondsBetweenNudges;
+    const boundedSeconds = Math.max(25, Math.min(60, seconds));
+    setConfusionCooldownUntilMs(Date.now() + boundedSeconds * 1000);
     setConfusionPending(null);
     clearConfusionNudge();
   };

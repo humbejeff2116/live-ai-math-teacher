@@ -101,6 +101,10 @@ export function useLiveAudio(timelineRef?: RefObject<AudioStepTimeline>) {
     setAudioState("interrupted");
   }, []);
 
+  const setPlaybackRate = useCallback((rate: number) => {
+    playerRef.current?.setPlaybackRate(rate);
+  }, []);
+
   return {
     playChunk,
     seekToMs,
@@ -110,6 +114,6 @@ export function useLiveAudio(timelineRef?: RefObject<AudioStepTimeline>) {
     audioState,
     waveform,
     currentTimeMs,
+    setPlaybackRate,
   };
 }
-
