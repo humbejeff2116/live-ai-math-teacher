@@ -10,6 +10,7 @@ export function ConfusionConfirmToast(props: {
   pendingChoice?: "hint" | "explain" | null;
   reasonText?: string | null;
   reasonShownAtMs?: number | null;
+  alwaysShowReason?: boolean;
 }) {
   const {
     stepIndex,
@@ -20,6 +21,7 @@ export function ConfusionConfirmToast(props: {
     pendingChoice = null,
     reasonText = null,
     reasonShownAtMs = null,
+    alwaysShowReason = false,
   } = props;
 
   const [paused, setPaused] = useState(false);
@@ -136,7 +138,7 @@ export function ConfusionConfirmToast(props: {
           </div>
         </div>
 
-        {showReason && reasonText && (
+        {(alwaysShowReason || showReason) && reasonText && (
           <div className="mt-1 text-xs italic text-slate-500">
             {reasonText}
           </div>

@@ -27,6 +27,7 @@ const TEACHER_LABEL: Record<TeacherState, string> = {
 };
 
 export function TeachingSession() {
+  const isDev = import.meta.env.MODE !== "production";
   const [input, setInput] = useState("");
   const [isListening, setIsListening] = useState(false);
   const [nowMs, setNowMs] = useState(() => Date.now());
@@ -43,6 +44,9 @@ export function TeachingSession() {
     id: number;
     message: string;
   } | null>(null);
+  const [demoNarrativeMode, setDemoNarrativeMode] = useState(
+    () => isDev && import.meta.env.VITE_DEMO_NARRATIVE === "true",
+  );
   const { state: debugState } = useDebugState();
   const { reconnect } = useWebSocketState();
 
@@ -53,6 +57,7 @@ export function TeachingSession() {
   const actionToastTimeoutRef = useRef<number | null>(null);
   const actionToastCounterRef = useRef(0);
   const stepConfusedAtRef = useRef<Map<string, number>>(new Map());
+  const reExplainDelayTimeoutRef = useRef<number | null>(null);
   const SOFT_MEMORY_MS = 45_000;
 
   const {
@@ -149,6 +154,7 @@ export function TeachingSession() {
     cooldownRemainingMs > 0 && !teacherMeta.confusionNudge;
   const showConfusionIdleHint =
     !teacherMeta.confusionNudge && !confusionPending && !showCooldownHint;
+  const isDemoNarrative = isDev && demoNarrativeMode;
   const confusionReasonText = useMemo(() => {
     const n = teacherMeta.confusionNudge;
     if (!n) return null;
@@ -228,6 +234,23 @@ export function TeachingSession() {
     stepConfusedAtRef.current.set(stepId, Date.now());
   }, []);
 
+  const sendWithReExplainDelay = useCallback(
+    (sendFn: () => void) => {
+      if (!isDemoNarrative) {
+        sendFn();
+        return;
+      }
+      if (reExplainDelayTimeoutRef.current != null) {
+        window.clearTimeout(reExplainDelayTimeoutRef.current);
+      }
+      reExplainDelayTimeoutRef.current = window.setTimeout(() => {
+        reExplainDelayTimeoutRef.current = null;
+        sendFn();
+      }, 450);
+    },
+    [isDemoNarrative],
+  );
+
   useEffect(() => {
     const nudge = teacherMeta.confusionNudge;
     if (!nudge) return;
@@ -292,6 +315,10 @@ export function TeachingSession() {
         window.clearTimeout(actionToastTimeoutRef.current);
         actionToastTimeoutRef.current = null;
       }
+      if (reExplainDelayTimeoutRef.current != null) {
+        window.clearTimeout(reExplainDelayTimeoutRef.current);
+        reExplainDelayTimeoutRef.current = null;
+      }
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
@@ -300,6 +327,18 @@ export function TeachingSession() {
     const interval = window.setInterval(() => setNowMs(Date.now()), 300);
     return () => window.clearInterval(interval);
   }, []);
+
+  useEffect(() => {
+    if (!isDev) return;
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (!event.ctrlKey || !event.shiftKey) return;
+      if (event.key.toLowerCase() !== "n") return;
+      event.preventDefault();
+      setDemoNarrativeMode((prev) => !prev);
+    };
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [isDev]);
 
   const showActionToast = useCallback((message: string) => {
     const toastId = (actionToastCounterRef.current += 1);
@@ -446,23 +485,33 @@ export function TeachingSession() {
       stepId: n.stepId,
     });
 
-    wsClient?.send({
-      type: "confusion_help_response",
-      payload: {
-        offerId: n.offerId,
-        stepId: n.stepId,
-        choice: "explain",
-        atMs: Date.now(),
-      },
+    sendWithReExplainDelay(() => {
+      wsClient?.send({
+        type: "confusion_help_response",
+        payload: {
+          offerId: n.offerId,
+          stepId: n.stepId,
+          choice: "explain",
+          atMs: Date.now(),
+        },
+      });
     });
   };
 
   const handleReExplain = (stepId: string, style?: "simpler" | "visual" | "example") => {
     setReExplainStepId(stepId);
-    reExplainStep(stepId, style);
+    sendWithReExplainDelay(() => reExplainStep(stepId, style));
   };
 
   const toastToShow = actionToast ?? seekToast;
+  const nudgeAutoHideMs =
+    confusionPending?.offerId === teacherMeta.confusionNudge?.offerId
+      ? isDemoNarrative
+        ? 11000
+        : 9000 // give it longer while â€œworkingâ€¦â€
+      : isDemoNarrative
+        ? 8000
+        : undefined;
 
   const handleDismissNudge = () => {
     const n = teacherMeta.confusionNudge;
@@ -563,16 +612,13 @@ export function TeachingSession() {
           onDismiss={handleDismissNudge}
           reasonText={confusionReasonText}
           reasonShownAtMs={teacherMeta.confusionNudge.atMs}
+          alwaysShowReason={isDemoNarrative}
           pendingChoice={
             confusionPending?.offerId === teacherMeta.confusionNudge.offerId
               ? confusionPending.choice
               : null
           }
-          autoHideMs={
-            confusionPending?.offerId === teacherMeta.confusionNudge.offerId
-              ? 9000 // give it longer while “working…”
-              : undefined
-          }
+          autoHideMs={nudgeAutoHideMs}
         />
       )}
       {showCooldownHint && (
