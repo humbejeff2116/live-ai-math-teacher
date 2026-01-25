@@ -22,6 +22,7 @@ import { resolveConfusedStep } from "../stepResolution/confusionResolver.js";
 import { resolveStepFromText } from "../stepResolution/stepIntentResolver.js";
 
 const DEBUG_EQUATION_STEPS = true;
+const MICRO_PAUSE_MS = 160;
 
 type ResumeContext = {
   lastCompletedStep?: EquationStep;
@@ -163,6 +164,10 @@ export class GeminiLiveSession {
     }
   }
 
+  private async microPauseBeforeReexplain() {
+    await new Promise((resolve) => setTimeout(resolve, MICRO_PAUSE_MS));
+  }
+
   private setState(state: TeacherState, signal?: TeacherSignal) {
     this.teacherState = state;
     if (signal) this.send(signal);
@@ -229,6 +234,8 @@ export class GeminiLiveSession {
         type: "teacher_reexplaining",
         stepIndex: step.index,
       });
+
+      await this.microPauseBeforeReexplain();
 
       const prompt = `
       You are a patient math teacher.
@@ -324,6 +331,8 @@ export class GeminiLiveSession {
         type: "teacher_reexplaining",
         stepIndex: step.index,
       });
+
+      await this.microPauseBeforeReexplain();
 
       await this.streamExplanation(prompt, { audioMode: "step" });
 
@@ -497,6 +506,8 @@ export class GeminiLiveSession {
         type: "teacher_reexplaining",
         stepIndex: step.index,
       });
+
+      await this.microPauseBeforeReexplain();
 
       const prompt = buildAdaptiveConfusionPrompt({
         stepText: step.text,
