@@ -44,7 +44,7 @@ export function EquationSteps({
       ?.scrollIntoView({ block: "nearest", behavior: "smooth" });
   }, [hoverStepId]);
 
-  const stepIndexById = new Map(steps.map((step) => [step.id, step.uiIndex]));
+  const stepIndexById = new Map(steps.map((step) => [step.id, step.index]));
   const badgeStyles = {
     muted: {
       background: "rgba(148,163,184,0.2)",
@@ -104,6 +104,11 @@ export function EquationSteps({
           0% { background-color: rgba(99,102,241,0.04); }
           50% { background-color: rgba(99,102,241,0.1); }
           100% { background-color: rgba(99,102,241,0.04); }
+        }
+        @keyframes confusionPulse {
+          0% { box-shadow: 0 0 0 0 rgba(245,158,11,0.18); }
+          50% { box-shadow: 0 0 0 4px rgba(245,158,11,0.08); }
+          100% { box-shadow: 0 0 0 0 rgba(245,158,11,0.18); }
         }`}
       </style>
       {showHeader && <h3>Solution Steps</h3>}
@@ -114,8 +119,18 @@ export function EquationSteps({
         const isHovered = step.id === hoverStepId && !isActive;
         const isPending = step.id === pendingStepId && !isActive;
         const isAnimated = step.id === animatedStepId;
+        const isConfusionPending = step.id === confusionPendingStepId;
+        const isConfusionConfirmed =
+          !isConfusionPending &&
+          confusionConfirmedStepIndex != null &&
+          step.index === confusionConfirmedStepIndex;
         const stepBadge = getStepBadge(step.id);
         const pendingLabelTop = stepBadge ? 30 : 8;
+        const confusionClassName = isConfusionPending
+          ? "confusion-pending outline outline-1 outline-dashed outline-amber-300"
+          : isConfusionConfirmed
+          ? "confusion-confirmed outline outline-2 outline-solid outline-amber-400"
+          : undefined;
         const audioBadge =
           step.audioStatus === "ready"
             ? {
@@ -142,6 +157,10 @@ export function EquationSteps({
           <Fragment key={step.id}>
             <div
               id={`step-${step.id}`}
+              className={confusionClassName}
+              title={
+                isConfusionPending ? "Waiting for confirmation..." : undefined
+              }
               onClick={(event) => {
                 const rect = event.currentTarget.getBoundingClientRect();
                 onStepClick?.(step.id, rect);
@@ -170,7 +189,9 @@ export function EquationSteps({
                   : isHovered
                   ? "rgba(99,102,241,0.06)"
                   : "transparent",
-                animation: isPending
+                animation: isConfusionPending
+                  ? "confusionPulse 2.4s ease-in-out infinite"
+                  : isPending
                   ? "pendingPulse 2.1s ease-in-out infinite"
                   : isAnimated
                   ? "pulseGlow 1.2s ease-in-out infinite"
