@@ -89,6 +89,7 @@ export class GeminiLiveSession {
   private static readonly PENDING_OFFER_TTL_MS = 12_000; // offer expires if not acted on
   private static readonly DISMISS_COOLDOWN_MS = 25_000; // don't re-offer same step if dismissed
   private static readonly OFFER_REPEAT_GUARD_MS = 900; // your existing “same step pending” guard
+  private static readonly CONFUSION_DEDUP_MS = 6_000; // ignore duplicate signals for the same pending step
 
   constructor(private ws: WebSocket) {
     this.streamingClient = new GeminiLiveStreamingClient();
@@ -173,8 +174,6 @@ export class GeminiLiveSession {
     if (signal) this.send(signal);
   }
 
-  //TODO... is handleUserMessage properly implemented, I just removed
-  //this block -> if (this.pendingOffer && this.isAffirmativeHelp(text)) { ... }
   async handleUserMessage(text: string, forceResumeMode = false) {
     try {
       if (this.pendingOffer) {
@@ -423,6 +422,16 @@ export class GeminiLiveSession {
       }
 
       const now = Date.now();
+
+      // De-dup: if we already have a pending offer for this step, ignore repeats briefly.
+      if (
+        this.pendingOffer &&
+        this.pendingOffer.stepId === step.id &&
+        now - this.pendingOffer.offeredAtMs <
+          GeminiLiveSession.CONFUSION_DEDUP_MS
+      ) {
+        return;
+      }
 
       // if step is in cooldown, skip the “nudge offer” stage
       const cooldownUntil = this.nudgeCooldownByStepId.get(step.id) ?? 0;
@@ -745,3 +754,4 @@ export class GeminiLiveSession {
     }
   }
 }
+
