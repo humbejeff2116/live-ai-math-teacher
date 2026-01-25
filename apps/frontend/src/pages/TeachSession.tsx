@@ -16,6 +16,7 @@ import { useDebugState } from "../state/debugState";
 import { useWebSocketState } from "../state/weSocketState";
 import { ConfusionConfirmToast } from "@/components/session/ConfusionConfirmationToast";
 import { logEvent } from "../lib/debugTimeline";
+import { recordEvent as recordPersonalizationEvent } from "../personalization";
 
 const TEACHER_LABEL: Record<TeacherState, string> = {
   idle: "Idle",
@@ -260,6 +261,12 @@ export function TeachingSession() {
       type: "confusion_nudge_dismissed",
       payload: { stepId: nudge.stepId, atMs: Date.now() },
     });
+    recordPersonalizationEvent({
+      type: "nudge_dismissed",
+      stepId: nudge.stepId,
+      reason: nudge.reason,
+      atMs: Date.now(),
+    });
   }, [teacherMeta.confusionNudge, clearConfusionNudge, isStepRecentlyConfused, wsClient]);
 
   useEffect(() => {
@@ -442,6 +449,14 @@ export function TeachingSession() {
     const n = teacherMeta.confusionNudge;
     if (!n) return;
     markStepConfused(n.stepId);
+    const stepType = stepById.get(n.stepId)?.type;
+    recordPersonalizationEvent({
+      type: "confusion_confirmed",
+      stepId: n.stepId,
+      stepType,
+      reason: n.reason,
+      atMs: Date.now(),
+    });
 
     setConfusionPending({
       offerId: n.offerId,
@@ -469,6 +484,14 @@ export function TeachingSession() {
   const handleConfusionExplain = () => {
     const n = teacherMeta.confusionNudge;
     if (!n) return;
+    const stepType = stepById.get(n.stepId)?.type;
+    recordPersonalizationEvent({
+      type: "confusion_confirmed",
+      stepId: n.stepId,
+      stepType,
+      reason: n.reason,
+      atMs: Date.now(),
+    });
     setReExplainStepId(n.stepId);
     confusionReExplainPendingRef.current = n.stepIndex;
     markStepConfused(n.stepId);
@@ -519,6 +542,21 @@ export function TeachingSession() {
       wsClient?.send({
         type: "confusion_nudge_dismissed",
         payload: { stepId: n.stepId, atMs: Date.now() },
+      });
+      const stepType = stepById.get(n.stepId)?.type;
+      recordPersonalizationEvent({
+        type: "nudge_dismissed",
+        stepId: n.stepId,
+        stepType,
+        reason: n.reason,
+        atMs: Date.now(),
+      });
+      recordPersonalizationEvent({
+        type: "confusion_dismissed",
+        stepId: n.stepId,
+        stepType,
+        reason: n.reason,
+        atMs: Date.now(),
       });
     }
     setConfusionCooldownUntilMs(Date.now() + 25_000);

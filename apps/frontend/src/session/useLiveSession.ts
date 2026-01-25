@@ -12,6 +12,7 @@ import { useTeacherState } from "./useTeacherState";
 import { AudioStepTimeline } from "../audio/audioStepTimeLine";
 import { classifyConfusion } from "./session.utils";
 import { logEvent } from "../lib/debugTimeline";
+import { recordEvent as recordPersonalizationEvent } from "../personalization";
 
 export function useLiveSession() {
   const sendTimeRef = useRef<number | null>(null);
@@ -219,6 +220,7 @@ export function useHandleMessage(
   const DEBUG_EQUATION_STEPS = true;
   const stepIndexByIdRef = useRef(new Map<string, number>());
   const lastTeacherSignalRef = useRef<string | null>(null);
+  const lastReexplainStepIdRef = useRef<string | null>(null);
   const [chat, setChat] = useState<ChatMessage[]>([]);
   const [equationSteps, setEquationSteps] = useState<UIEquationStep[]>([]);
   const [streamingText, setStreamingText] = useState("");
@@ -291,6 +293,14 @@ export function useHandleMessage(
     [currentProblemIdRef, setProblemId],
   );
 
+  const resolveStepIdFromIndex = useCallback((index?: number | null) => {
+    if (index == null) return null;
+    for (const [stepId, stepIndex] of stepIndexByIdRef.current.entries()) {
+      if (stepIndex === index) return stepId;
+    }
+    return null;
+  }, []);
+
   const handleMessage = useCallback(
     (message: ServerToClientMessage) => {
       const updateLatencyOnce = () => {
@@ -311,10 +321,27 @@ export function useHandleMessage(
         logEvent("ReexplainStarted", {
           step: message.stepIndex != null ? message.stepIndex + 1 : undefined,
         });
+        const stepId = resolveStepIdFromIndex(message.stepIndex);
+        lastReexplainStepIdRef.current = stepId;
+        if (stepId) {
+          recordPersonalizationEvent({
+            type: "reexplain_started",
+            stepId,
+            atMs: Date.now(),
+          });
+        }
         lastTeacherSignalRef.current = "re-explaining";
       } else if (message.type === "teacher_waiting") {
         if (lastTeacherSignalRef.current === "re-explaining") {
           logEvent("ReexplainEnded");
+          const stepId = lastReexplainStepIdRef.current;
+          if (stepId) {
+            recordPersonalizationEvent({
+              type: "reexplain_completed",
+              stepId,
+              atMs: Date.now(),
+            });
+          }
         }
         lastTeacherSignalRef.current = "waiting";
       } else if (message.type === "teacher_explaining") {
@@ -495,7 +522,7 @@ export function useHandleMessage(
         // speak(message.payload.text);
       }
     },
-    [dispatchTeacher, setDebugState, sendTimeRef, stepTimelineRef, lastStepIndexRef, DEBUG_EQUATION_STEPS, interruptTTS, playChunk, markTeacherUtteranceFinal],
+    [dispatchTeacher, setDebugState, sendTimeRef, stepTimelineRef, lastStepIndexRef, DEBUG_EQUATION_STEPS, interruptTTS, playChunk, markTeacherUtteranceFinal, resolveStepIdFromIndex],
   );
 
   //Your step status timer
