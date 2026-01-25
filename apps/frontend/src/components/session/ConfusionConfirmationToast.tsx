@@ -201,8 +201,20 @@ export function ConfusionConfirmToast(props: {
               "rounded-full px-2 py-1 text-xs font-semibold",
               isPending ? "text-slate-300" : "text-slate-500 hover:bg-slate-100",
             ].join(" ")}
+          >
+            I'm good, continue
+          </button>
+
+          <button
+            type="button"
+            onClick={onDismiss}
+            disabled={isPending}
+            className={[
+              "rounded-full px-2 py-1 text-xs font-semibold",
+              isPending ? "text-slate-300" : "text-slate-500 hover:bg-slate-100",
+            ].join(" ")}
             aria-label="Dismiss"
-            title={isPending ? "Working…" : "Dismiss"}
+            title={isPending ? "Working..." : "Dismiss"}
           >
             ✕
           </button>
