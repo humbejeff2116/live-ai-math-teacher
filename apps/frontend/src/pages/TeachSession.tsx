@@ -136,6 +136,8 @@ export function TeachingSession() {
       : 0;
   const showCooldownHint =
     cooldownRemainingMs > 0 && !teacherMeta.confusionNudge;
+  const showConfusionIdleHint =
+    !teacherMeta.confusionNudge && !confusionPending && !showCooldownHint;
   const confusionReasonText = useMemo(() => {
     const n = teacherMeta.confusionNudge;
     if (!n) return null;
@@ -512,6 +514,25 @@ export function TeachingSession() {
           }}
         >
           Nudge available in ~{Math.ceil(cooldownRemainingMs / 1000)}s
+        </div>
+      )}
+      {showConfusionIdleHint && (
+        <div
+          style={{
+            position: "fixed",
+            bottom: 88,
+            left: "50%",
+            transform: "translateX(-50%)",
+            zIndex: 68,
+            padding: "4px 10px",
+            borderRadius: 999,
+            fontSize: 12,
+            color: "#94a3b8",
+            background: "rgba(148,163,184,0.08)",
+            border: "1px solid rgba(148,163,184,0.18)",
+          }}
+        >
+          I'll jump in if anything feels unclear.
         </div>
       )}
 

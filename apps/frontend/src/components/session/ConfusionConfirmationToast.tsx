@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+import { useOneShotHint } from "../../hooks/useOneShotHint";
 
 export function ConfusionConfirmToast(props: {
   stepIndex: number; // 0-based from server
@@ -23,6 +24,8 @@ export function ConfusionConfirmToast(props: {
 
   const [paused, setPaused] = useState(false);
   const [showReason, setShowReason] = useState(false);
+  const { visible: showNudgeHint, showOnce: showNudgeHintOnce } =
+    useOneShotHint("confusionNudgeHintSeen", 4200);
   const remainingMsRef = useRef(autoHideMs);
   const startedAtRef = useRef<number | null>(null);
   const timerRef = useRef<number | null>(null);
@@ -94,6 +97,10 @@ export function ConfusionConfirmToast(props: {
     return () => window.clearTimeout(t);
   }, [reasonText, reasonShownAtMs]);
 
+  useEffect(() => {
+    showNudgeHintOnce();
+  }, [showNudgeHintOnce]);
+
   return (
     <div
       style={{
@@ -112,22 +119,21 @@ export function ConfusionConfirmToast(props: {
     >
       <div className="rounded-full border border-slate-200 bg-white/95 px-3 py-2 shadow-lg backdrop-blur">
         <div className="flex items-center gap-2">
-        <div className="text-xs font-medium text-slate-700">
-          Stuck on step {stepIndex + 1}?
-        </div>
+          <div className="text-xs font-medium text-slate-700">
+            Stuck on step {stepIndex + 1}?
+          </div>
 
-        <div className="text-xs font-medium text-slate-700">
-          {isPending ? (
-            pendingChoice === "hint" ? (
-              <>Got it — sending a small hint…</>
+          <div className="text-xs font-medium text-slate-700">
+            {isPending ? (
+              pendingChoice === "hint" ? (
+                <>Got it — sending a small hint…</>
+              ) : (
+                <>Got it — I’ll re-explain that step…</>
+              )
             ) : (
-              <>Got it — I’ll re-explain that step…</>
-            )
-          ) : (
-            <>Want a hint for step {stepIndex + 1}?</>
-          )}
-        </div>
-
+              <>Want a hint for step {stepIndex + 1}?</>
+            )}
+          </div>
         </div>
 
         {showReason && reasonText && (
@@ -136,64 +142,70 @@ export function ConfusionConfirmToast(props: {
           </div>
         )}
 
+        {showNudgeHint && (
+          <div className="mt-1 text-xs italic text-slate-500">
+            I’ll nudge first—then we can go deeper if needed.
+          </div>
+        )}
+
         <div className="mt-2 flex items-center gap-2">
           <button
-          type="button"
-          onClick={onHint}
-          disabled={isPending}
-          className={[
-            "rounded-full px-3 py-1 text-xs font-semibold",
-            isPending
-              ? "bg-slate-100 text-slate-400"
-              : "bg-slate-100 text-slate-800 hover:bg-slate-200",
-          ].join(" ")}
-        >
-          <span className="inline-flex items-center gap-1.5">
-            {pendingChoice === "hint" ? (
-              <span
-                className="inline-block h-3 w-3 animate-spin rounded-full border border-slate-400 border-t-transparent"
-                aria-hidden
-              />
-            ) : null}
-            Small hint
-          </span>
-        </button>
+            type="button"
+            onClick={onHint}
+            disabled={isPending}
+            className={[
+              "rounded-full px-3 py-1 text-xs font-semibold",
+              isPending
+                ? "bg-slate-100 text-slate-400"
+                : "bg-slate-100 text-slate-800 hover:bg-slate-200",
+            ].join(" ")}
+          >
+            <span className="inline-flex items-center gap-1.5">
+              {pendingChoice === "hint" ? (
+                <span
+                  className="inline-block h-3 w-3 animate-spin rounded-full border border-slate-400 border-t-transparent"
+                  aria-hidden
+                />
+              ) : null}
+              Small hint
+            </span>
+          </button>
 
-        <button
-          type="button"
-          onClick={onExplain}
-          disabled={isPending}
-          className={[
-            "rounded-full px-3 py-1 text-xs font-semibold",
-            isPending
-              ? "bg-emerald-600/40 text-white/70"
-              : "bg-emerald-600 text-white hover:bg-emerald-700",
-          ].join(" ")}
-        >
-          <span className="inline-flex items-center gap-1.5">
-            {pendingChoice === "explain" ? (
-              <span
-                className="inline-block h-3 w-3 animate-spin rounded-full border border-white/80 border-t-transparent"
-                aria-hidden
-              />
-            ) : null}
-            Re-explain
-          </span>
-        </button>
-        
-        <button
-          type="button"
-          onClick={onDismiss}
-          disabled={isPending}
-          className={[
-            "rounded-full px-2 py-1 text-xs font-semibold",
-            isPending ? "text-slate-300" : "text-slate-500 hover:bg-slate-100",
-          ].join(" ")}
-          aria-label="Dismiss"
-          title={isPending ? "Working…" : "Dismiss"}
-        >
-          ✕
-        </button>
+          <button
+            type="button"
+            onClick={onExplain}
+            disabled={isPending}
+            className={[
+              "rounded-full px-3 py-1 text-xs font-semibold",
+              isPending
+                ? "bg-emerald-600/40 text-white/70"
+                : "bg-emerald-600 text-white hover:bg-emerald-700",
+            ].join(" ")}
+          >
+            <span className="inline-flex items-center gap-1.5">
+              {pendingChoice === "explain" ? (
+                <span
+                  className="inline-block h-3 w-3 animate-spin rounded-full border border-white/80 border-t-transparent"
+                  aria-hidden
+                />
+              ) : null}
+              Re-explain
+            </span>
+          </button>
+
+          <button
+            type="button"
+            onClick={onDismiss}
+            disabled={isPending}
+            className={[
+              "rounded-full px-2 py-1 text-xs font-semibold",
+              isPending ? "text-slate-300" : "text-slate-500 hover:bg-slate-100",
+            ].join(" ")}
+            aria-label="Dismiss"
+            title={isPending ? "Working…" : "Dismiss"}
+          >
+            ✕
+          </button>
         </div>
       </div>
     </div>

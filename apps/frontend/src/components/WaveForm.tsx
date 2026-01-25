@@ -1,6 +1,7 @@
 import { useMemo, useState } from "react";
 import type { WaveformPoint } from "../audio/audioTypes";
 import type { StepAudioRange } from "@shared/types";
+import { useOneShotHint } from "../hooks/useOneShotHint";
 
 type Props = {
   waveform: WaveformPoint[];
@@ -32,6 +33,8 @@ export function Waveform({
   onSeekRequest,
 }: Props) {
   const [isDragging, setIsDragging] = useState(false);
+  const { visible: showScrubHint, showOnce: showScrubHintOnce } =
+    useOneShotHint("waveformScrubHintSeen", 4500);
   const SNAP_THRESHOLD_SEC = 0.25;
   const animatedRange = useMemo(() => {
     if (!animatedStepId) return null;
@@ -131,16 +134,22 @@ export function Waveform({
         padding: "8px",
         overflow: "hidden",
       }}
-      onMouseLeave={() => onHoverTime?.(null)}
+      onMouseLeave={() => {
+        onHoverTime?.(null);
+        setIsDragging(false);
+      }}
       onMouseMove={(e) => {
+        showScrubHintOnce();
         const rect = e.currentTarget.getBoundingClientRect();
         const ratio = (e.clientX - rect.left) / rect.width;
         const clampedRatio = Math.min(1, Math.max(0, ratio));
         onHoverTime?.(Math.min(durationMs, Math.max(0, clampedRatio * durationMs)));
       }}
-      onMouseDown={() => setIsDragging(true)}
+      onMouseDown={() => {
+        showScrubHintOnce();
+        setIsDragging(true);
+      }}
       onMouseUp={() => setIsDragging(false)}
-      onMouseLeaveCapture={() => setIsDragging(false)}
       onClick={(e) => {
         const rect = e.currentTarget.getBoundingClientRect();
         const ratio = (e.clientX - rect.left) / rect.width;
@@ -214,6 +223,25 @@ export function Waveform({
               }}
             />
           ))}
+        </div>
+      )}
+      {showScrubHint && (
+        <div
+          style={{
+            position: "absolute",
+            left: 10,
+            top: 8,
+            padding: "4px 8px",
+            fontSize: 11,
+            borderRadius: 6,
+            background: "rgba(15, 23, 42, 0.08)",
+            color: "#0f172a",
+            border: "1px solid rgba(15, 23, 42, 0.12)",
+            pointerEvents: "none",
+            zIndex: 12,
+          }}
+        >
+          Scrub to preview, release to jump.
         </div>
       )}
       {hoverPercent != null && (
