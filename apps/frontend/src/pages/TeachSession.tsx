@@ -125,6 +125,27 @@ export function TeachingSession() {
   const animatedStepId = hoverStepId ?? activeStepId ?? null;
   const confusionPendingStepId = teacherMeta.confusionNudge?.stepId;
   const confusionConfirmedStepIndex = debugState.confusionHandledStepIndex;
+  const confusionReasonText = useMemo(() => {
+    const n = teacherMeta.confusionNudge;
+    if (!n) return null;
+    switch (n.reason) {
+      case "hesitation":
+        return "Detected hesitation";
+      case "pause":
+        return "Long pause after explanation";
+      case "wrong_answer":
+        return "Answer didn't match the last step";
+      case "repeat_request":
+        return "Asked to repeat a step";
+      case "general":
+      default:
+        if (n.source === "voice") return "Voice uncertainty";
+        if (n.source === "text") return "Confusion in message";
+        if (n.source === "video") return "Visual uncertainty detected";
+        if (n.source === "system") return "Detected uncertainty";
+        return null;
+    }
+  }, [teacherMeta.confusionNudge]);
 
   const hoverLabel = hoverStep
     ? `Step ${hoverStep.uiIndex} \u2013 ${hoverStep.type}`
@@ -411,6 +432,8 @@ export function TeachingSession() {
           onHint={handleConfusionHint}
           onExplain={handleConfusionExplain}
           onDismiss={handleDismissNudge}
+          reasonText={confusionReasonText}
+          reasonShownAtMs={teacherMeta.confusionNudge.atMs}
           pendingChoice={
             confusionPending?.offerId === teacherMeta.confusionNudge.offerId
               ? confusionPending.choice

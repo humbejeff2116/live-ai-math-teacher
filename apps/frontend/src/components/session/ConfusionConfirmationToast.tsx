@@ -7,6 +7,8 @@ export function ConfusionConfirmToast(props: {
   onDismiss: () => void;
   autoHideMs?: number;
   pendingChoice?: "hint" | "explain" | null;
+  reasonText?: string | null;
+  reasonShownAtMs?: number | null;
 }) {
   const {
     stepIndex,
@@ -15,9 +17,12 @@ export function ConfusionConfirmToast(props: {
     onDismiss,
     autoHideMs = 5200,
     pendingChoice = null,
+    reasonText = null,
+    reasonShownAtMs = null,
   } = props;
 
   const [paused, setPaused] = useState(false);
+  const [showReason, setShowReason] = useState(false);
   const remainingMsRef = useRef(autoHideMs);
   const startedAtRef = useRef<number | null>(null);
   const timerRef = useRef<number | null>(null);
@@ -78,6 +83,17 @@ export function ConfusionConfirmToast(props: {
     return () => window.removeEventListener("keydown", onKeyDown);
   }, [onDismiss]);
 
+  useEffect(() => {
+    if (!reasonText) {
+      setShowReason(false);
+      return;
+    }
+
+    setShowReason(true);
+    const t = window.setTimeout(() => setShowReason(false), 3000);
+    return () => window.clearTimeout(t);
+  }, [reasonText, reasonShownAtMs]);
+
   return (
     <div
       style={{
@@ -94,7 +110,8 @@ export function ConfusionConfirmToast(props: {
       role="status"
       aria-live="polite"
     >
-      <div className="flex items-center gap-2 rounded-full border border-slate-200 bg-white/95 px-3 py-2 shadow-lg backdrop-blur">
+      <div className="rounded-full border border-slate-200 bg-white/95 px-3 py-2 shadow-lg backdrop-blur">
+        <div className="flex items-center gap-2">
         <div className="text-xs font-medium text-slate-700">
           Stuck on step {stepIndex + 1}?
         </div>
@@ -111,7 +128,16 @@ export function ConfusionConfirmToast(props: {
           )}
         </div>
 
-        <button
+        </div>
+
+        {showReason && reasonText && (
+          <div className="mt-1 text-xs italic text-slate-500">
+            {reasonText}
+          </div>
+        )}
+
+        <div className="mt-2 flex items-center gap-2">
+          <button
           type="button"
           onClick={onHint}
           disabled={isPending}
@@ -168,6 +194,7 @@ export function ConfusionConfirmToast(props: {
         >
           ✕
         </button>
+        </div>
       </div>
     </div>
   );
