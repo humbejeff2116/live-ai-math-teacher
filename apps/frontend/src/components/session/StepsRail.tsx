@@ -18,6 +18,7 @@ type StepsRailProps = {
   confusionConfirmedStepIndex?: number;
   onStepClick?: (id: string, rect: DOMRect) => void;
   onReExplain: (id: string, style?: ReexplanStyle) => void;
+  reExplainStepId?: string | null;
 };
 
 const TOOLTIP_STORAGE_KEY = "stepsRailTooltipSeen";
@@ -35,12 +36,17 @@ export function StepsRail({
   confusionConfirmedStepIndex,
   onStepClick,
   onReExplain,
+  reExplainStepId = null,
 }: StepsRailProps) {
   const [showTooltip, setShowTooltip] = useState(false);
   const [collapsed, setCollapsed] = useState(false);
 
   const hasSteps = steps.length > 0;
   const pendingLabel = pendingStepId ? "Resume here?" : undefined;
+  const reExplainStep = useMemo(
+    () => steps.find((step) => step.id === reExplainStepId) ?? null,
+    [steps, reExplainStepId],
+  );
 
   const tooltipSeen = useMemo(() => {
     if (typeof window === "undefined") return true;
@@ -78,6 +84,11 @@ export function StepsRail({
         {showTooltip && (
           <div className="relative mx-3 mt-3 rounded-lg border border-indigo-100 bg-indigo-50 px-3 py-2 text-xs text-indigo-800 shadow-sm">
             You can click any step to explore or resume from it.
+          </div>
+        )}
+        {teacherState === "re-explaining" && reExplainStep && (
+          <div className="mx-3 mt-2 inline-flex w-fit items-center gap-2 rounded-full border border-slate-200 bg-slate-50 px-3 py-1 text-xs font-medium text-slate-600">
+            Re-explain linked to Step {reExplainStep.uiIndex}
           </div>
         )}
 

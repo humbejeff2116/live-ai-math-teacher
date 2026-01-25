@@ -38,6 +38,7 @@ export function TeachingSession() {
     choice: "hint" | "explain";
     startedAtMs: number;
   } | null>(null);
+  const [reExplainStepId, setReExplainStepId] = useState<string | null>(null);
   const { state: debugState } = useDebugState();
   const { reconnect } = useWebSocketState();
 
@@ -274,6 +275,12 @@ export function TeachingSession() {
     }
   }, [teacherState, isListening, stopListening]);
 
+  useEffect(() => {
+    if (teacherState !== "re-explaining") {
+      setReExplainStepId(null);
+    }
+  }, [teacherState]);
+
   //Auto-clear pending as soon as teacher responds
   useEffect(() => {
     if (!confusionPending) return;
@@ -363,6 +370,7 @@ export function TeachingSession() {
   const handleConfusionExplain = () => {
     const n = teacherMeta.confusionNudge;
     if (!n) return;
+    setReExplainStepId(n.stepId);
 
     setConfusionPending({
       offerId: n.offerId,
@@ -385,6 +393,11 @@ export function TeachingSession() {
         atMs: Date.now(),
       },
     });
+  };
+
+  const handleReExplain = (stepId: string, style?: "simpler" | "visual" | "example") => {
+    setReExplainStepId(stepId);
+    reExplainStep(stepId, style);
   };
 
   const handleDismissNudge = () => {
@@ -450,8 +463,9 @@ export function TeachingSession() {
             audioState={audioState}
             confusionPendingStepId={confusionPendingStepId}
             confusionConfirmedStepIndex={confusionConfirmedStepIndex}
-            onReExplain={reExplainStep}
+            onReExplain={handleReExplain}
             onStepClick={handleStepClick}
+            reExplainStepId={reExplainStepId}
           />
         }
         conversation={
