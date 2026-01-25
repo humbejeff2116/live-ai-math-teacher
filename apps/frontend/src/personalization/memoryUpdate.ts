@@ -1,4 +1,4 @@
-import type { PersonalizationMemory } from "./schema";
+import type { StudentMemoryDoc } from "./schema";
 
 export type MemoryEvent =
   | { type: "confusion_confirmed"; stepId: string; atMs: number }
@@ -7,9 +7,9 @@ export type MemoryEvent =
   | { type: "reexplain_completed"; stepId: string; atMs: number };
 
 export function applyMemoryEvent(
-  memory: PersonalizationMemory,
+  memory: StudentMemoryDoc,
   _event: MemoryEvent,
-): PersonalizationMemory {
+): StudentMemoryDoc {
   return {
     ...memory,
     updatedAtMs: Date.now(),
