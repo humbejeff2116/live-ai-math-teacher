@@ -45,7 +45,11 @@ export function purgeExpired(doc: StudentMemoryDoc): StudentMemoryDoc {
 
   if (next.conceptStats) {
     const entries = Object.entries(next.conceptStats).filter(([, v]) => {
-      const lastTouched = Math.max(v.lastConfusedAtMs ?? 0, v.lastSuccessAtMs ?? 0);
+      if (v.expiresAtMs != null) return v.expiresAtMs > now;
+      const lastTouched = Math.max(
+        v.lastConfusedAtMs ?? 0,
+        v.lastSuccessAtMs ?? 0,
+      );
       if (!lastTouched) return true;
       return now - lastTouched <= CONCEPT_TTL_MS;
     });

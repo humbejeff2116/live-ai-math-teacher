@@ -30,6 +30,10 @@ export type ConceptStat = {
   conceptId: string;
   totalAttempts: number;
   confusionCount: number;
+  dismissedCount?: number;
+  reExplainCount?: number;
+  difficultyScore?: number;
+  expiresAtMs?: number;
   lastConfusedAtMs?: number;
   lastSuccessAtMs?: number;
 };
@@ -43,18 +47,21 @@ export type EvidenceEvent =
       stepId: string;
       atMs: number;
       reason?: ReasonCode;
+      conceptIds?: string[];
     }
   | {
       type: "reexplain_started" | "reexplain_completed";
       stepId: string;
       atMs: number;
       reason?: ReasonCode;
+      conceptIds?: string[];
     }
   | {
       type: "nudge_shown" | "nudge_dismissed";
       stepId: string;
       atMs: number;
       reason?: ReasonCode;
+      conceptIds?: string[];
     };
 
 export type StudentMemoryDoc = {
@@ -73,6 +80,10 @@ export type StudentMemoryDoc = {
    * Small bounded evidence list; never store raw transcripts/audio.
    */
   evidenceEvents?: EvidenceEvent[];
+  /**
+   * Recent top reason codes inferred from evidence; no raw transcripts/audio stored.
+   */
+  topReasonCodes?: ReasonCode[];
 };
 
 export type ExplicitPreferences = {
