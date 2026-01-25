@@ -1,4 +1,4 @@
-import { useMemo } from "react";
+import { useMemo, useState } from "react";
 import type { WaveformPoint } from "../audio/audioTypes";
 import type { StepAudioRange } from "@shared/types";
 
@@ -29,6 +29,7 @@ export function Waveform({
   onHoverTime,
   onSeekRequest,
 }: Props) {
+  const [isDragging, setIsDragging] = useState(false);
   const animatedRange = useMemo(() => {
     if (!animatedStepId) return null;
     return stepRanges.find((r) => r.stepId === animatedStepId) ?? null;
@@ -52,6 +53,12 @@ export function Waveform({
   const hoverPercent =
     hoverMs != null && durationMs > 0
       ? Math.min(100, Math.max(0, (hoverMs / durationMs) * 100))
+      : null;
+  const hoverText =
+    hoverLabel && hoverPercent != null
+      ? isDragging
+        ? `Release to jump \u2014 ${hoverLabel}`
+        : `Preview \u2014 ${hoverLabel}`
       : null;
 
   const boundaryPercents = useMemo(() => {
@@ -91,6 +98,9 @@ export function Waveform({
         const clampedRatio = Math.min(1, Math.max(0, ratio));
         onHoverTime?.(Math.min(durationMs, Math.max(0, clampedRatio * durationMs)));
       }}
+      onMouseDown={() => setIsDragging(true)}
+      onMouseUp={() => setIsDragging(false)}
+      onMouseLeaveCapture={() => setIsDragging(false)}
       onClick={(e) => {
         const rect = e.currentTarget.getBoundingClientRect();
         const ratio = (e.clientX - rect.left) / rect.width;
@@ -159,7 +169,23 @@ export function Waveform({
           ))}
         </div>
       )}
-      {hoverLabel && hoverPercent != null && (
+      {hoverPercent != null && (
+        <div
+          style={{
+            position: "absolute",
+            left: `${hoverPercent}%`,
+            top: 6,
+            bottom: 6,
+            width: 1,
+            borderLeft: "1px dashed rgba(15, 23, 42, 0.35)",
+            opacity: 0.7,
+            zIndex: 9,
+            pointerEvents: "none",
+            transform: "translateX(-50%)",
+          }}
+        />
+      )}
+      {hoverText && (
         <div
           style={{
             position: "absolute",
@@ -176,7 +202,7 @@ export function Waveform({
             zIndex: 20,
           }}
         >
-          {hoverLabel}
+          {hoverText}
         </div>
       )}
       {/* Playhead Indicator */}
