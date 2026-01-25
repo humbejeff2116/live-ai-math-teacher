@@ -5,6 +5,7 @@ import type { StepAudioRange } from "@shared/types";
 type Props = {
   waveform: WaveformPoint[];
   stepRanges: StepAudioRange[];
+  stepIndexById?: Record<string, number>;
   durationMs: number;
   currentTimeMs: number;
   animatedStepId: string | null;
@@ -21,6 +22,7 @@ type Props = {
 export function Waveform({
   waveform,
   stepRanges,
+  stepIndexById,
   durationMs,
   currentTimeMs,
   animatedStepId,
@@ -30,6 +32,7 @@ export function Waveform({
   onSeekRequest,
 }: Props) {
   const [isDragging, setIsDragging] = useState(false);
+  const SNAP_THRESHOLD_SEC = 0.25;
   const animatedRange = useMemo(() => {
     if (!animatedStepId) return null;
     return stepRanges.find((r) => r.stepId === animatedStepId) ?? null;
@@ -54,8 +57,45 @@ export function Waveform({
     hoverMs != null && durationMs > 0
       ? Math.min(100, Math.max(0, (hoverMs / durationMs) * 100))
       : null;
-  const hoverText =
-    hoverLabel && hoverPercent != null
+  const previewTimeSec = hoverMs != null ? hoverMs / 1000 : null;
+  const getNearestStepBoundary = (
+    previewSec: number | null,
+  ): {
+    stepId: string;
+    stepIndex?: number;
+    boundaryTimeSec: number;
+    deltaSec: number;
+  } | null => {
+    if (previewSec == null) return null;
+    let nearest: {
+      stepId: string;
+      stepIndex?: number;
+      boundaryTimeSec: number;
+      deltaSec: number;
+    } | null = null;
+    let nearestDelta = Number.POSITIVE_INFINITY;
+    for (const range of stepRanges) {
+      if (range.startMs == null) continue;
+      const boundaryTimeSec = range.startMs / 1000;
+      const deltaSec = previewSec - boundaryTimeSec;
+      const absDelta = Math.abs(deltaSec);
+      if (absDelta < nearestDelta) {
+        nearestDelta = absDelta;
+        nearest = {
+          stepId: range.stepId,
+          stepIndex: stepIndexById?.[range.stepId],
+          boundaryTimeSec,
+          deltaSec,
+        };
+      }
+    }
+    if (!nearest || nearestDelta > SNAP_THRESHOLD_SEC) return null;
+    return nearest;
+  };
+  const nearestBoundary = getNearestStepBoundary(previewTimeSec);
+  const hoverText = nearestBoundary
+    ? `Jump to Step ${nearestBoundary.stepIndex ?? "?"}?`
+    : hoverLabel && hoverPercent != null
       ? isDragging
         ? `Release to jump \u2014 ${hoverLabel}`
         : `Preview \u2014 ${hoverLabel}`
@@ -112,6 +152,13 @@ export function Waveform({
         });
       }}
     >
+      <style>
+        {`@keyframes magneticHint {
+          0% { transform: translateX(-50%) scaleX(1); opacity: 0.7; }
+          50% { transform: translateX(-50%) scaleX(1.6); opacity: 0.95; }
+          100% { transform: translateX(-50%) scaleX(1); opacity: 0.7; }
+        }`}
+      </style>
       {animatedRange && (
         <div
           style={{
@@ -182,6 +229,12 @@ export function Waveform({
             zIndex: 9,
             pointerEvents: "none",
             transform: "translateX(-50%)",
+            animation: nearestBoundary
+              ? "magneticHint 0.9s ease-in-out infinite"
+              : undefined,
+            boxShadow: nearestBoundary
+              ? "0 0 0 2px rgba(245,158,11,0.12)"
+              : undefined,
           }}
         />
       )}

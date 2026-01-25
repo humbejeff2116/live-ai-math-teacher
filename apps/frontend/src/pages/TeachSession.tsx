@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useLiveSession } from "../session/useLiveSession";
 import { useSpeechInput } from "../speech/useSpeechInput";
 import { Waveform } from "../components/WaveForm";
@@ -132,6 +132,13 @@ export function TeachingSession() {
 
   const visibleSteps = equationSteps.filter(
     (step) => step.runId === currentProblemId,
+  );
+  const stepIndexById = useMemo(
+    () =>
+      Object.fromEntries(
+        visibleSteps.map((step) => [step.id, step.uiIndex]),
+      ),
+    [visibleSteps],
   );
 
   const connectionStatus = debugState.isReconnecting
@@ -346,6 +353,7 @@ export function TeachingSession() {
                 <Waveform
                   waveform={waveform}
                   stepRanges={stepTimeline?.getRanges() || []}
+                  stepIndexById={stepIndexById}
                   durationMs={stepTimeline?.getTotalDurationMs() || 0}
                   currentTimeMs={currentTimeMs}
                   animatedStepId={animatedStepId}
