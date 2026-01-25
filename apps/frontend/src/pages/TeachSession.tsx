@@ -29,6 +29,9 @@ export function TeachingSession() {
   const [input, setInput] = useState("");
   const [isListening, setIsListening] = useState(false);
   const [nowMs, setNowMs] = useState(() => Date.now());
+  const [confusionCooldownUntilMs, setConfusionCooldownUntilMs] = useState<
+    number | null
+  >(null);
   const [confusionPending, setConfusionPending] = useState<{
     offerId: string;
     choice: "hint" | "explain";
@@ -125,6 +128,12 @@ export function TeachingSession() {
   const animatedStepId = hoverStepId ?? activeStepId ?? null;
   const confusionPendingStepId = teacherMeta.confusionNudge?.stepId;
   const confusionConfirmedStepIndex = debugState.confusionHandledStepIndex;
+  const cooldownRemainingMs =
+    confusionCooldownUntilMs != null
+      ? Math.max(0, confusionCooldownUntilMs - nowMs)
+      : 0;
+  const showCooldownHint =
+    cooldownRemainingMs > 0 && !teacherMeta.confusionNudge;
   const confusionReasonText = useMemo(() => {
     const n = teacherMeta.confusionNudge;
     if (!n) return null;
@@ -178,6 +187,12 @@ export function TeachingSession() {
   useEffect(() => {
     if (teacherState !== "waiting") waitingNudgeSentRef.current = false;
   }, [teacherState]);
+
+  useEffect(() => {
+    if (teacherMeta.confusionNudge) {
+      setConfusionCooldownUntilMs(null);
+    }
+  }, [teacherMeta.confusionNudge]);
 
   useEffect(() => {
     if (teacherState !== "waiting") return;
@@ -345,6 +360,7 @@ export function TeachingSession() {
         payload: { stepId: n.stepId, atMs: Date.now() },
       });
     }
+    setConfusionCooldownUntilMs(Date.now() + 25_000);
     setConfusionPending(null);
     clearConfusionNudge();
   };
@@ -445,6 +461,25 @@ export function TeachingSession() {
               : undefined
           }
         />
+      )}
+      {showCooldownHint && (
+        <div
+          style={{
+            position: "fixed",
+            bottom: 88,
+            left: "50%",
+            transform: "translateX(-50%)",
+            zIndex: 69,
+            padding: "4px 10px",
+            borderRadius: 999,
+            fontSize: 12,
+            color: "#94a3b8",
+            background: "rgba(148,163,184,0.12)",
+            border: "1px solid rgba(148,163,184,0.2)",
+          }}
+        >
+          Nudge available in ~{Math.ceil(cooldownRemainingMs / 1000)}s
+        </div>
       )}
 
       {isConfirmingSeek && (
