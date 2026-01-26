@@ -46,6 +46,7 @@ export function useLiveSession() {
     resetDebugForNewProblem,
     maybeStartNewProblemFromStudentText,
     clearConfusionNudge,
+    reexplainStepId,
   } = useHandleMessage(
     stepTimelineRef,
     sendTimeRef,
@@ -69,11 +70,32 @@ export function useLiveSession() {
       setPlaybackRate(1);
       return;
     }
-    const decision = getPersonalizationDecision();
+    const stepForTagging = reexplainStepId
+      ? equationSteps.find((step) => step.id === reexplainStepId)
+      : null;
+    const tagResult = stepForTagging
+      ? tagStepConcepts(stepForTagging.text)
+      : null;
+    const sessionContext = stepForTagging
+      ? {
+          stepId: stepForTagging.id,
+          stepType:
+            tagResult?.stepType && tagResult.stepType !== "other"
+              ? tagResult.stepType
+              : stepForTagging.type,
+          conceptIds:
+            tagResult && tagResult.conceptIds.length > 0
+              ? tagResult.conceptIds
+              : undefined,
+        }
+      : undefined;
+    const decision = getPersonalizationDecision({
+      sessionContext,
+    });
     const pace = decision.settings.pace;
     const targetRate = pace === "slow" ? 0.95 : 1;
     setPlaybackRate(targetRate);
-  }, [setPlaybackRate, teacherState]);
+  }, [setPlaybackRate, teacherState, equationSteps, reexplainStepId]);
 
   // 3. Cleanup logic: Stop audio/timers when the hook unmounts
   useEffect(() => {
@@ -244,6 +266,7 @@ export function useHandleMessage(
   const [streamingText, setStreamingText] = useState("");
   const [aiLifecycleTick, setAiLifecycleTick] = useState(0);
   const [currentProblemId, setCurrentProblemId] = useState(0);
+  const [reexplainStepId, setReexplainStepId] = useState<string | null>(null);
   const [lastAudioChunkAtMs, setLastAudioChunkAtMs] = useState<number | null>(
     null,
   );
@@ -357,6 +380,7 @@ export function useHandleMessage(
         });
         const stepId = resolveStepIdFromIndex(message.stepIndex);
         lastReexplainStepIdRef.current = stepId;
+        setReexplainStepId(stepId ?? null);
         if (stepId) {
           const tags = resolveStepTags(stepId);
           recordPersonalizationEvent({
@@ -620,5 +644,6 @@ export function useHandleMessage(
     resetDebugForNewProblem,
     maybeStartNewProblemFromStudentText,
     clearConfusionNudge,
+    reexplainStepId,
   };
 }

@@ -60,6 +60,8 @@ export type DecidePersonalizationArgs = {
 const MIN_CONFIDENCE = 0.6;
 const PREF_TTL_MS = 30 * 24 * 60 * 60 * 1000;
 const REEXPLAIN_RECENT_MS = 7 * 24 * 60 * 60 * 1000;
+const CONCEPT_DIFFICULTY_THRESHOLD = 0.7;
+const CONCEPT_MIN_ATTEMPTS = 3;
 const DEFAULT_SETTINGS: PersonalizationSettings = {
   pace: "steady",
   verbosity: "balanced",
@@ -97,6 +99,27 @@ const countRecentReexplains = (
     }
     return nowMs - event.atMs <= REEXPLAIN_RECENT_MS;
   }).length;
+};
+
+const getHighDifficultyConcept = (
+  memory: StudentMemoryDoc | undefined,
+  conceptIds: string[] | undefined,
+): { conceptId: string; difficultyScore: number } | null => {
+  if (!memory?.conceptStats || !conceptIds || conceptIds.length === 0) {
+    return null;
+  }
+  let best: { conceptId: string; difficultyScore: number } | null = null;
+  for (const conceptId of conceptIds) {
+    const stat = memory.conceptStats[conceptId];
+    if (!stat) continue;
+    if ((stat.totalAttempts ?? 0) < CONCEPT_MIN_ATTEMPTS) continue;
+    const score = stat.difficultyScore ?? 0;
+    if (score < CONCEPT_DIFFICULTY_THRESHOLD) continue;
+    if (!best || score > best.difficultyScore) {
+      best = { conceptId, difficultyScore: score };
+    }
+  }
+  return best;
 };
 
 const getNudgeDismissalStats = (memory: StudentMemoryDoc | undefined) => {
@@ -164,9 +187,25 @@ const buildSummary = (args: {
   hasRecentReexplains: boolean;
   paceSource: DecisionSource;
   paceValue: PacePreference;
+  conceptBiasApplied: boolean;
+  conceptBiasAppliedPace: boolean;
+  conceptBiasAppliedVerbosity: boolean;
 }): string => {
   if (args.disabled) return "Personalization is off.";
   const { changes, sources } = args;
+
+  if (args.conceptBiasApplied) {
+    if (args.conceptBiasAppliedPace && args.conceptBiasAppliedVerbosity) {
+      return "Going slower and adding more detail because this concept has been difficult recently.";
+    }
+    if (args.conceptBiasAppliedPace) {
+      return "Going slower because this concept has been difficult recently.";
+    }
+    if (args.conceptBiasAppliedVerbosity) {
+      return "Adding more detail because this concept has been difficult recently.";
+    }
+    return "Adjusting pace because this concept has been difficult recently.";
+  }
 
   if (
     args.paceValue === "slow" &&
@@ -325,6 +364,37 @@ export function decidePersonalization(
     details.push("Explain-every-step inferred from recent behavior.");
   }
 
+  const conceptBias = getHighDifficultyConcept(
+    memory,
+    args.sessionContext?.conceptIds,
+  );
+  let conceptBiasAppliedPace = false;
+  let conceptBiasAppliedVerbosity = false;
+
+  if (conceptBias) {
+    if (fieldSources.pace !== "explicit" && settings.pace !== "slow") {
+      settings.pace = "slow";
+      fieldSources.pace = "inferred";
+      conceptBiasAppliedPace = true;
+    }
+    if (fieldSources.verbosity !== "explicit" && settings.verbosity !== "detailed") {
+      settings.verbosity = "detailed";
+      fieldSources.verbosity = "inferred";
+      conceptBiasAppliedVerbosity = true;
+    }
+    if (conceptBiasAppliedPace || conceptBiasAppliedVerbosity) {
+      sources.add("inferred");
+      reasonCodes.add("CONCEPT_DIFFICULTY_HIGH");
+      const adjustments = [
+        conceptBiasAppliedPace ? "slowing down" : null,
+        conceptBiasAppliedVerbosity ? "adding detail" : null,
+      ].filter(Boolean);
+      details.push(
+        `Concept difficulty is high (${conceptBias.difficultyScore.toFixed(2)}), ${adjustments.join(" and ")}.`,
+      );
+    }
+  }
+
   const nudgePolicy: NudgePolicy = { ...DEFAULT_NUDGE_POLICY };
   const nudgeStats = getNudgeDismissalStats(memory);
   const sessionDismissals = sessionSignals?.recentDismissalsForStep ?? 0;
@@ -382,6 +452,9 @@ export function decidePersonalization(
     hasRecentReexplains: countRecentReexplains(memory, nowMs) >= 2,
     paceSource: fieldSources.pace,
     paceValue: settings.pace,
+    conceptBiasApplied: conceptBiasAppliedPace || conceptBiasAppliedVerbosity,
+    conceptBiasAppliedPace,
+    conceptBiasAppliedVerbosity,
   });
 
   return {

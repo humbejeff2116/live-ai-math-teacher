@@ -1,6 +1,10 @@
 import type { ConfusionReason } from "@shared/types";
 
-export type ReasonCode = ConfusionReason | "manual" | "unknown";
+export type ReasonCode =
+  | ConfusionReason
+  | "manual"
+  | "unknown"
+  | "CONCEPT_DIFFICULTY_HIGH";
 
 export type PacePreference = "slow" | "steady" | "fast";
 export type VerbosityPreference = "concise" | "balanced" | "detailed";
