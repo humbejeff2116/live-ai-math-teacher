@@ -4,6 +4,8 @@ import { useCallback, useReducer } from "react";
 import { logEvent } from "../lib/debugTimeline";
 import { recordEvent as recordPersonalizationEvent } from "../personalization";
 
+const isDev = import.meta.env.MODE !== "production";
+
 type TeacherMeta = {
   // Did the last teacher utterance look like a question?
   lastUtteranceWasQuestion: boolean;
@@ -114,6 +116,18 @@ function reducer(model: TeacherModel, action: Action): TeacherModel {
         case "teacher_waiting": {
           const now = Date.now();
           const awaiting = model.meta.lastUtteranceWasQuestion ? now : null;
+          if (isDev) {
+            console.log("[useTeacherState] teacher_waiting", {
+              atMs: now,
+              message: msg,
+              lastUtteranceWasQuestion: model.meta.lastUtteranceWasQuestion,
+              prevAwaitingAnswerSinceMs: model.meta.awaitingAnswerSinceMs,
+              nextAwaitingAnswerSinceMs: awaiting,
+              awaitingAnswerSinceMsUpdated:
+                model.meta.awaitingAnswerSinceMs !== awaiting,
+              stateTransition: "waiting",
+            });
+          }
 
           return {
             ...model,

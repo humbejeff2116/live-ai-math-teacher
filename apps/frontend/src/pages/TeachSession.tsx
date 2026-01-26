@@ -294,12 +294,33 @@ export function TeachingSession() {
   ]);
 
   useEffect(() => {
-    if (teacherState !== "waiting") return;
-    if (!teacherMeta.awaitingAnswerSinceMs) return;
-    if (teacherMeta.confusionNudge) return;
-    if (waitingNudgeSentRef.current) return;
+    const shouldSchedule =
+      teacherState === "waiting" &&
+      Boolean(teacherMeta.awaitingAnswerSinceMs) &&
+      !teacherMeta.confusionNudge &&
+      !waitingNudgeSentRef.current;
+
+    if (isDev) {
+      console.log("[TeachingSession] waiting confusion check", {
+        atMs: Date.now(),
+        teacherState,
+        awaitingAnswerSinceMs: teacherMeta.awaitingAnswerSinceMs,
+        hasConfusionNudge: Boolean(teacherMeta.confusionNudge),
+        waitingNudgeAlreadySent: waitingNudgeSentRef.current,
+        shouldSchedule,
+      });
+    }
+
+    if (!shouldSchedule) return;
 
     const t = window.setTimeout(() => {
+      if (isDev) {
+        console.log("[TeachingSession] waiting confusion timeout fired", {
+          atMs: Date.now(),
+          teacherState,
+          awaitingAnswerSinceMs: teacherMeta.awaitingAnswerSinceMs,
+        });
+      }
       // mark immediately so we can't double-fire
       waitingNudgeSentRef.current = true;
 
@@ -314,6 +335,13 @@ export function TeachingSession() {
         durationMs: pauseDurationMs,
       });
 
+      if (isDev) {
+        console.log("[TeachingSession] waiting confusion send", {
+          atMs: observedAtMs,
+          hasWsClient: Boolean(wsClient),
+          stepIdHint: activeStepId ?? null,
+        });
+      }
       wsClient?.send({
         type: "confusion_signal",
         payload: {
@@ -327,7 +355,21 @@ export function TeachingSession() {
       });
     }, 6500);
 
-    return () => window.clearTimeout(t);
+    if (isDev) {
+      console.log("[TeachingSession] waiting confusion timer scheduled", {
+        atMs: Date.now(),
+        delayMs: 6500,
+      });
+    }
+
+    return () => {
+      if (isDev) {
+        console.log("[TeachingSession] waiting confusion timer cleared", {
+          atMs: Date.now(),
+        });
+      }
+      window.clearTimeout(t);
+    };
   }, [
     teacherState,
     activeStepId,
@@ -439,6 +481,15 @@ export function TeachingSession() {
   }, [confusionPending]);
 
   const handleSend = async () => {
+    if (isDev) {
+      console.log("[TeachingSession] handleSend", {
+        atMs: Date.now(),
+        teacherState,
+        audioState,
+        wsConnected: debugState.connected,
+        audioConnStatus,
+      });
+    }
     await unlockAudio();
     const message = input.trim();
     if (!message) return;

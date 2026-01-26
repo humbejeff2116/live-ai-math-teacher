@@ -364,6 +364,10 @@ export class GeminiLiveAudioClient {
     }
   }
 
+  isRunning(): boolean {
+    return this.active && this.ws?.readyState === WebSocket.OPEN;
+  }
+
   close() {
     try {
       this.ws?.close();

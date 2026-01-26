@@ -23,6 +23,7 @@ import { resolveStepFromText } from "../stepResolution/stepIntentResolver.js";
 
 const DEBUG_EQUATION_STEPS = true;
 const MICRO_PAUSE_MS = 160;
+const isDev = process.env.NODE_ENV !== "production";
 
 type ResumeContext = {
   lastCompletedStep?: EquationStep;
@@ -84,6 +85,7 @@ export class GeminiLiveSession {
   private pendingOffer: PendingConfusionOffer | null = null;
 
   private nudgeCooldownByStepId = new Map<string, number>();
+  private lastInterruptAtMs: number | null = null;
 
   // Tunables
   private static readonly PENDING_OFFER_TTL_MS = 12_000; // offer expires if not acted on
@@ -149,9 +151,22 @@ export class GeminiLiveSession {
         },
       },
       (status, reason) => {
+        const atMs = Date.now();
+        if (isDev) {
+          const sinceInterruptMs =
+            this.lastInterruptAtMs != null ? atMs - this.lastInterruptAtMs : null;
+          console.log("GeminiLiveSession::audio_status", {
+            status,
+            reason,
+            atMs,
+            sinceInterruptMs,
+            fromInterrupt:
+              sinceInterruptMs != null && sinceInterruptMs >= 0 && sinceInterruptMs < 2000,
+          });
+        }
         this.send({
           type: "audio_status",
-          payload: { status, reason, atMs: Date.now() },
+          payload: { status, reason, atMs },
         });
       },
     );
@@ -186,6 +201,13 @@ export class GeminiLiveSession {
       // If they typed something else, drop the pending offer
       this.pendingOffer = null;
 
+      if (isDev) {
+        console.log("GeminiLiveSession::handleUserMessage interrupt invoked for user_message", {
+          atMs: Date.now(),
+          teacherState: this.teacherState,
+          audioClientRunning: this.audioClient.isRunning(),
+        });
+      }
       this.interrupt();
       this.setState("thinking", { type: "teacher_thinking" });
 
@@ -259,6 +281,16 @@ export class GeminiLiveSession {
   }
 
   interrupt() {
+    const now = Date.now();
+    if (isDev) {
+      console.log("GeminiLiveSession::interrupt", {
+        atMs: now,
+        teacherState: this.teacherState,
+        audioClientRunning: this.audioClient.isRunning(),
+        willHaltPlayback: true,
+      });
+    }
+    this.lastInterruptAtMs = now;
     if (this.teacherState === "explaining") {
       this.setState("interrupted", {
         type: "teacher_interrupted",
@@ -274,6 +306,11 @@ export class GeminiLiveSession {
     this.stepAudioTracker.interrupt();
     this.audioClock.reset();
     this.audioClient.haltPlayback();
+    if (isDev) {
+      console.log("GeminiLiveSession::interrupt haltPlayback called", {
+        atMs: Date.now(),
+      });
+    }
 
     this.send({ type: "ai_interrupted" });
   }

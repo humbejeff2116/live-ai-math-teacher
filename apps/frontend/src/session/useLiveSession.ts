@@ -258,6 +258,7 @@ export function useHandleMessage(
   playChunk: (b64: string, stepId?: string, mimeType?: string) => void,
 ) {
   const DEBUG_EQUATION_STEPS = true;
+  const isDev = import.meta.env.MODE !== "production";
   const stepIndexByIdRef = useRef(new Map<string, number>());
   const stepSnapshotByIdRef = useRef(new Map<string, EquationStep>());
   const lastTeacherSignalRef = useRef<string | null>(null);
@@ -374,6 +375,13 @@ export function useHandleMessage(
       };
 
       updateLatencyOnce();
+
+      if (message.type === "teacher_waiting" && isDev) {
+        console.log("[useHandleMessage] teacher_waiting received", {
+          atMs: Date.now(),
+          message,
+        });
+      }
 
       if (message.type === "teacher_reexplaining") {
         logEvent("ReexplainStarted", {

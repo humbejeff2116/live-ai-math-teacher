@@ -1,4 +1,4 @@
 
 
-export const appName = "SolveAI";
+export const appName = "TutorLiveAI";
 export const avatarName = "Astrid";
