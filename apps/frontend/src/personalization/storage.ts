@@ -3,6 +3,10 @@ import {
   type StudentMemoryDoc,
   createEmptyStudentMemory,
 } from "./schema";
+import {
+  CANONICAL_CONCEPT_ALIASES,
+  normalizeConceptIds,
+} from "./conceptNormalization";
 
 export const STUDENT_ID = "local";
 const STUDENT_MEMORY_KEY = "rtmt.studentMemory.v1";
@@ -66,6 +70,79 @@ export function purgeExpired(doc: StudentMemoryDoc): StudentMemoryDoc {
   return next;
 }
 
+const canonicalizeConceptId = (conceptId: string) =>
+  CANONICAL_CONCEPT_ALIASES[conceptId] ?? conceptId;
+
+const normalizeStudentMemoryConcepts = (
+  doc: StudentMemoryDoc,
+): StudentMemoryDoc => {
+  try {
+    let changed = false;
+    const next: StudentMemoryDoc = { ...doc };
+
+    if (next.evidenceEvents && next.evidenceEvents.length > 0) {
+      next.evidenceEvents = next.evidenceEvents.map((event) => {
+        if (!event.conceptIds || event.conceptIds.length === 0) return event;
+        const normalized = normalizeConceptIds(event.conceptIds);
+        if (
+          normalized.length === event.conceptIds.length &&
+          normalized.every((id, idx) => id === event.conceptIds?.[idx])
+        ) {
+          return event;
+        }
+        changed = true;
+        return {
+          ...event,
+          conceptIds: normalized.length > 0 ? normalized : undefined,
+        };
+      });
+    }
+
+    if (next.conceptStats) {
+      const merged: StudentMemoryDoc["conceptStats"] = {};
+      for (const [conceptId, stat] of Object.entries(next.conceptStats)) {
+        const canonicalId = canonicalizeConceptId(conceptId);
+        if (canonicalId !== conceptId) changed = true;
+        const existing = merged[canonicalId];
+        if (!existing) {
+          merged[canonicalId] = { ...stat, conceptId: canonicalId };
+          continue;
+        }
+        changed = true;
+        merged[canonicalId] = {
+          ...existing,
+          conceptId: canonicalId,
+          totalAttempts: (existing.totalAttempts ?? 0) + (stat.totalAttempts ?? 0),
+          confusionCount: (existing.confusionCount ?? 0) + (stat.confusionCount ?? 0),
+          dismissedCount: (existing.dismissedCount ?? 0) + (stat.dismissedCount ?? 0),
+          reExplainCount: (existing.reExplainCount ?? 0) + (stat.reExplainCount ?? 0),
+          difficultyScore: Math.max(
+            existing.difficultyScore ?? 0,
+            stat.difficultyScore ?? 0,
+          ),
+          lastConfusedAtMs: Math.max(
+            existing.lastConfusedAtMs ?? 0,
+            stat.lastConfusedAtMs ?? 0,
+          ) || undefined,
+          lastSuccessAtMs: Math.max(
+            existing.lastSuccessAtMs ?? 0,
+            stat.lastSuccessAtMs ?? 0,
+          ) || undefined,
+          expiresAtMs: Math.max(
+            existing.expiresAtMs ?? 0,
+            stat.expiresAtMs ?? 0,
+          ) || undefined,
+        };
+      }
+      if (changed) next.conceptStats = merged;
+    }
+
+    return changed ? next : doc;
+  } catch {
+    return doc;
+  }
+};
+
 export function migrateStudentMemory(raw: unknown): StudentMemoryDoc | null {
   if (!raw || typeof raw !== "object") return null;
   const candidate = raw as Partial<StudentMemoryDoc>;
@@ -91,7 +168,8 @@ export function loadStudentMemory(studentId = STUDENT_ID): StudentMemoryDoc {
   const raw = storage ? safeParse(storage.getItem(key)) : null;
   const migrated = migrateStudentMemory(raw);
   const base = migrated ?? createEmptyStudentMemory(Date.now());
-  const next = purgeExpired(base);
+  const normalized = normalizeStudentMemoryConcepts(base);
+  const next = purgeExpired(normalized);
   if (!migrated && storage) {
     storage.setItem(key, JSON.stringify(next));
   }
