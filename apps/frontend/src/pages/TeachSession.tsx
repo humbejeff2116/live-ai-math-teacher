@@ -57,6 +57,9 @@ export function TeachingSession() {
   const { reconnect } = useWebSocketState();
 
   const waitingNudgeSentRef = useRef(false);
+  const waitingSinceMsRef = useRef<number | null>(null);
+  const waitingNudgeTimerRef = useRef<number | null>(null);
+  const waitingNudgeRetryRef = useRef(false);
   const lastAudioStateRef = useRef<string | null>(null);
   const confusionReExplainPendingRef = useRef<number | null>(null);
   const lastConfusionReExplainToastRef = useRef<number | null>(null);
@@ -220,12 +223,30 @@ export function TeachingSession() {
   }, [audioState]);
 
   useEffect(() => {
-    if (teacherState !== "waiting") waitingNudgeSentRef.current = false;
+    if (teacherState === "waiting") {
+      if (waitingSinceMsRef.current == null) {
+        waitingSinceMsRef.current = Date.now();
+      }
+      return;
+    }
+
+    waitingSinceMsRef.current = null;
+    waitingNudgeSentRef.current = false;
+    waitingNudgeRetryRef.current = false;
+    if (waitingNudgeTimerRef.current != null) {
+      window.clearTimeout(waitingNudgeTimerRef.current);
+      waitingNudgeTimerRef.current = null;
+    }
   }, [teacherState]);
 
   useEffect(() => {
     if (teacherMeta.confusionNudge) {
       setConfusionCooldownUntilMs(null);
+      if (waitingNudgeTimerRef.current != null) {
+        window.clearTimeout(waitingNudgeTimerRef.current);
+        waitingNudgeTimerRef.current = null;
+      }
+      waitingNudgeRetryRef.current = false;
     }
   }, [teacherMeta.confusionNudge]);
 
@@ -294,40 +315,72 @@ export function TeachingSession() {
   ]);
 
   useEffect(() => {
+    const waitingSinceMs =
+      teacherMeta.awaitingAnswerSinceMs ?? waitingSinceMsRef.current;
+    const waitingSinceSource =
+      teacherMeta.awaitingAnswerSinceMs != null
+        ? "teacherMeta"
+        : waitingSinceMsRef.current != null
+          ? "clientFallback"
+          : "none";
     const shouldSchedule =
       teacherState === "waiting" &&
-      Boolean(teacherMeta.awaitingAnswerSinceMs) &&
+      waitingSinceMs != null &&
       !teacherMeta.confusionNudge &&
       !waitingNudgeSentRef.current;
+    const alreadyScheduled = waitingNudgeTimerRef.current != null;
 
     if (isDev) {
       console.log("[TeachingSession] waiting confusion check", {
         atMs: Date.now(),
         teacherState,
         awaitingAnswerSinceMs: teacherMeta.awaitingAnswerSinceMs,
+        waitingSinceMs,
+        waitingSinceSource,
         hasConfusionNudge: Boolean(teacherMeta.confusionNudge),
         waitingNudgeAlreadySent: waitingNudgeSentRef.current,
+        alreadyScheduled,
         shouldSchedule,
       });
     }
 
-    if (!shouldSchedule) return;
+    if (!shouldSchedule || alreadyScheduled) return;
 
-    const t = window.setTimeout(() => {
+    const fireNudge = () => {
+      const observedAtMs = Date.now();
+      const currentWs = getWSCLient();
+      if (!currentWs) {
+        if (isDev) {
+          console.log("[TeachingSession] waiting confusion wsClient null", {
+            atMs: observedAtMs,
+            retrying: !waitingNudgeRetryRef.current,
+          });
+        }
+        if (!waitingNudgeRetryRef.current) {
+          waitingNudgeRetryRef.current = true;
+          waitingNudgeTimerRef.current = window.setTimeout(fireNudge, 1000);
+        } else {
+          waitingNudgeTimerRef.current = null;
+        }
+        return;
+      }
+
       if (isDev) {
         console.log("[TeachingSession] waiting confusion timeout fired", {
-          atMs: Date.now(),
+          atMs: observedAtMs,
           teacherState,
           awaitingAnswerSinceMs: teacherMeta.awaitingAnswerSinceMs,
+          waitingSinceMs,
+          waitingSinceSource,
         });
       }
       // mark immediately so we can't double-fire
       waitingNudgeSentRef.current = true;
+      waitingNudgeRetryRef.current = false;
+      waitingNudgeTimerRef.current = null;
 
-      const observedAtMs = Date.now();
-      const pauseDurationMs = teacherMeta.awaitingAnswerSinceMs
-        ? observedAtMs - teacherMeta.awaitingAnswerSinceMs
-        : undefined;
+      const pauseDurationMs =
+        waitingSinceMs != null ? observedAtMs - waitingSinceMs : undefined;
       logEvent("ConfusionSignal", {
         source: "system",
         reason: "pause",
@@ -338,11 +391,11 @@ export function TeachingSession() {
       if (isDev) {
         console.log("[TeachingSession] waiting confusion send", {
           atMs: observedAtMs,
-          hasWsClient: Boolean(wsClient),
+          hasWsClient: Boolean(currentWs),
           stepIdHint: activeStepId ?? null,
         });
       }
-      wsClient?.send({
+      currentWs.send({
         type: "confusion_signal",
         payload: {
           source: "system",
@@ -353,7 +406,9 @@ export function TeachingSession() {
           observedAtMs,
         },
       });
-    }, 6500);
+    };
+
+    waitingNudgeTimerRef.current = window.setTimeout(fireNudge, 6500);
 
     if (isDev) {
       console.log("[TeachingSession] waiting confusion timer scheduled", {
@@ -361,19 +416,10 @@ export function TeachingSession() {
         delayMs: 6500,
       });
     }
-
-    return () => {
-      if (isDev) {
-        console.log("[TeachingSession] waiting confusion timer cleared", {
-          atMs: Date.now(),
-        });
-      }
-      window.clearTimeout(t);
-    };
   }, [
     teacherState,
     activeStepId,
-    wsClient,
+    getWSCLient,
     teacherMeta.awaitingAnswerSinceMs,
     teacherMeta.confusionNudge,
   ]);
@@ -391,6 +437,10 @@ export function TeachingSession() {
       if (reExplainDelayTimeoutRef.current != null) {
         window.clearTimeout(reExplainDelayTimeoutRef.current);
         reExplainDelayTimeoutRef.current = null;
+      }
+      if (waitingNudgeTimerRef.current != null) {
+        window.clearTimeout(waitingNudgeTimerRef.current);
+        waitingNudgeTimerRef.current = null;
       }
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
