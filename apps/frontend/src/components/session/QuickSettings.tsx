@@ -107,9 +107,21 @@ export function QuickSettings() {
     const stats = memorySnapshot?.conceptStats ?? {};
     const entries = Object.values(stats)
       .filter((stat) => typeof stat.difficultyScore === "number")
+      .map((stat) => ({
+        ...stat,
+        lastSeenAtMs: Math.max(
+          stat.lastConfusedAtMs ?? 0,
+          stat.lastSuccessAtMs ?? 0,
+        ) || undefined,
+      }))
       .sort((a, b) => (b.difficultyScore ?? 0) - (a.difficultyScore ?? 0))
       .slice(0, 3);
     return entries;
+  }, [memorySnapshot]);
+
+  const recentEvidence = useMemo(() => {
+    const events = memorySnapshot?.evidenceEvents ?? [];
+    return events.slice(-5);
   }, [memorySnapshot]);
 
   const handlePersonalizationToggle = (enabled: boolean) => {
@@ -129,6 +141,15 @@ export function QuickSettings() {
   const formatConfidence = (value?: number) => {
     if (value == null) return "n/a";
     return `${Math.round(value * 100)}%`;
+  };
+
+  const formatTimestamp = (value?: number) => {
+    if (!value) return "n/a";
+    return new Date(value).toLocaleTimeString([], {
+      hour: "2-digit",
+      minute: "2-digit",
+      second: "2-digit",
+    });
   };
 
   return (
@@ -204,7 +225,7 @@ export function QuickSettings() {
             />
           </label>
 
-          <div className="shadow-sm rounded-lg border  px-3 py-3">
+          <div className="shadow-sm rounded-lg border px-3 py-3">
             <div className="flex items-center justify-between">
               <div className="text-xs font-semibold text-slate-700">
                 Personalization (dev)
@@ -260,7 +281,36 @@ export function QuickSettings() {
                   <div key={stat.conceptId} className="flex items-center justify-between">
                     <span>{stat.conceptId}</span>
                     <span className="text-slate-500">
-                      {(stat.difficultyScore ?? 0).toFixed(2)}
+                      {(stat.difficultyScore ?? 0).toFixed(2)} â€¢{" "}
+                      {formatTimestamp(stat.lastSeenAtMs)}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            )}
+
+            <div className="mt-3 text-[11px] text-slate-400">
+              Concept tags are derived heuristically from step text; raw text is not
+              stored.
+            </div>
+
+            <div className="mt-3 text-[11px] font-semibold uppercase tracking-wide text-slate-400">
+              Recent evidence
+            </div>
+            {recentEvidence.length === 0 ? (
+              <div className="mt-1 text-xs text-slate-500">No events yet.</div>
+            ) : (
+              <div className="mt-2 space-y-1 text-xs text-slate-600">
+                {recentEvidence.map((event, index) => (
+                  <div key={`${event.type}-${event.atMs}-${index}`} className="flex items-start justify-between gap-2">
+                    <span className="text-slate-500">
+                      {formatTimestamp(event.atMs)}
+                    </span>
+                    <span className="flex-1 truncate">{event.type}</span>
+                    <span className="text-slate-400">
+                      {(event.conceptIds ?? []).length > 0
+                        ? event.conceptIds?.join(", ")
+                        : "â€”"}
                     </span>
                   </div>
                 ))}
