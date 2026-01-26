@@ -483,7 +483,7 @@ export class GeminiLiveSession {
       // 3) Safe fallback
       if (!step) {
         await this.handleUserMessage(
-          "No worries — tell me which step confused you (like 'step 2'), and I'll help.",
+          "No worries — tell me which step confused you (like 'step 1'), and I'll help.",
         );
         return;
       }
@@ -814,7 +814,10 @@ export class GeminiLiveSession {
         }
 
         if (!this.aborted) {
-          this.setState("waiting", { type: "teacher_waiting" });
+          this.setState("waiting", {
+            type: "teacher_waiting",
+            awaitingAnswerSinceMs: Date.now(),
+          });
         }
       }
     } catch (err) {

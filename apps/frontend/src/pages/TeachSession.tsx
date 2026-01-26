@@ -416,13 +416,7 @@ export function TeachingSession() {
         delayMs: 6500,
       });
     }
-  }, [
-    teacherState,
-    activeStepId,
-    getWSCLient,
-    teacherMeta.awaitingAnswerSinceMs,
-    teacherMeta.confusionNudge,
-  ]);
+  }, [teacherState, activeStepId, getWSCLient, teacherMeta.awaitingAnswerSinceMs, teacherMeta.confusionNudge, isDev]);
 
   useEffect(() => {
     return () => {

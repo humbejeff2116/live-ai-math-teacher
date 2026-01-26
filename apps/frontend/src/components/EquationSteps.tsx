@@ -236,6 +236,7 @@ export function EquationSteps({
                     {audioBadge.label}
                   </span>
                 )}
+                {/* TODO... fix this. It overflows the main container causing equation steps section to display a scroll bar */}
                 {stepBadge && (
                   <span
                     style={{

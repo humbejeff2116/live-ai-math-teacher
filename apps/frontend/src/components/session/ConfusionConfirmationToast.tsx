@@ -119,7 +119,7 @@ export function ConfusionConfirmToast(props: {
       role="status"
       aria-live="polite"
     >
-      <div className="rounded-full border border-slate-200 bg-white/95 px-3 py-2 shadow-lg backdrop-blur">
+      <div className="rounded-sm border border-slate-200 bg-white/95 px-3 py-2 shadow-lg backdrop-blur">
         <div className="flex items-center gap-2">
           <div className="text-xs font-medium text-slate-700">
             Stuck on step {stepIndex + 1}?
@@ -146,7 +146,7 @@ export function ConfusionConfirmToast(props: {
 
         {showNudgeHint && (
           <div className="mt-1 text-xs italic text-slate-500">
-            I’ll nudge first—then we can go deeper if needed.
+            I'll nudge first—then we can go deeper if needed.
           </div>
         )}
 

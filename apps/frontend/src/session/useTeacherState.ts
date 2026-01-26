@@ -115,7 +115,9 @@ function reducer(model: TeacherModel, action: Action): TeacherModel {
 
         case "teacher_waiting": {
           const now = Date.now();
-          const awaiting = model.meta.lastUtteranceWasQuestion ? now : null;
+          const awaiting =
+            msg.awaitingAnswerSinceMs ??
+            (model.meta.lastUtteranceWasQuestion ? now : null);
           if (isDev) {
             console.log("[useTeacherState] teacher_waiting", {
               atMs: now,

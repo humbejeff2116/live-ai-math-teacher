@@ -14,4 +14,4 @@ export type TeacherSignal =
   | { type: "teacher_explaining"; stepIndex?: number }
   | { type: "teacher_reexplaining"; stepIndex?: number }
   | { type: "teacher_interrupted"; lastCompletedStepIndex: number | null }
-  | { type: "teacher_waiting" };
+  | { type: "teacher_waiting"; awaitingAnswerSinceMs?: number };
