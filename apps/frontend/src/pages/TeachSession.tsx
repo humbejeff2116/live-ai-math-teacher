@@ -21,6 +21,7 @@ import {
   recordEvent as recordPersonalizationEvent,
 } from "../personalization";
 import { tagStepConcepts } from "../personalization/conceptTagger";
+import { normalizeConceptIds } from "../personalization/conceptNormalization";
 
 const TEACHER_LABEL: Record<TeacherState, string> = {
   idle: "Idle",
@@ -273,14 +274,14 @@ export function TeachingSession() {
       tagResult?.stepType && tagResult.stepType !== "other"
         ? tagResult.stepType
         : stepForTagging?.type;
+    const conceptIds = tagResult
+      ? normalizeConceptIds(tagResult.conceptIds)
+      : [];
     recordPersonalizationEvent({
       type: "nudge_dismissed",
       stepId: nudge.stepId,
       stepType,
-      conceptIds:
-        tagResult && tagResult.conceptIds.length > 0
-          ? tagResult.conceptIds
-          : undefined,
+      conceptIds: conceptIds.length > 0 ? conceptIds : undefined,
       reason: nudge.reason,
       atMs: Date.now(),
     });
@@ -480,14 +481,14 @@ export function TeachingSession() {
       tagResult?.stepType && tagResult.stepType !== "other"
         ? tagResult.stepType
         : stepForTagging?.type;
+    const conceptIds = tagResult
+      ? normalizeConceptIds(tagResult.conceptIds)
+      : [];
     recordPersonalizationEvent({
       type: "confusion_confirmed",
       stepId: n.stepId,
       stepType,
-      conceptIds:
-        tagResult && tagResult.conceptIds.length > 0
-          ? tagResult.conceptIds
-          : undefined,
+      conceptIds: conceptIds.length > 0 ? conceptIds : undefined,
       reason: n.reason,
       atMs: Date.now(),
     });
@@ -526,14 +527,14 @@ export function TeachingSession() {
       tagResult?.stepType && tagResult.stepType !== "other"
         ? tagResult.stepType
         : stepForTagging?.type;
+    const conceptIds = tagResult
+      ? normalizeConceptIds(tagResult.conceptIds)
+      : [];
     recordPersonalizationEvent({
       type: "confusion_confirmed",
       stepId: n.stepId,
       stepType,
-      conceptIds:
-        tagResult && tagResult.conceptIds.length > 0
-          ? tagResult.conceptIds
-          : undefined,
+      conceptIds: conceptIds.length > 0 ? conceptIds : undefined,
       reason: n.reason,
       atMs: Date.now(),
     });
@@ -596,14 +597,14 @@ export function TeachingSession() {
         tagResult?.stepType && tagResult.stepType !== "other"
           ? tagResult.stepType
           : stepForTagging?.type;
+      const conceptIds = tagResult
+        ? normalizeConceptIds(tagResult.conceptIds)
+        : [];
       recordPersonalizationEvent({
         type: "nudge_dismissed",
         stepId: n.stepId,
         stepType,
-        conceptIds:
-          tagResult && tagResult.conceptIds.length > 0
-            ? tagResult.conceptIds
-            : undefined,
+        conceptIds: conceptIds.length > 0 ? conceptIds : undefined,
         reason: n.reason,
         atMs: Date.now(),
       });
@@ -611,10 +612,7 @@ export function TeachingSession() {
         type: "confusion_dismissed",
         stepId: n.stepId,
         stepType,
-        conceptIds:
-          tagResult && tagResult.conceptIds.length > 0
-            ? tagResult.conceptIds
-            : undefined,
+        conceptIds: conceptIds.length > 0 ? conceptIds : undefined,
         reason: n.reason,
         atMs: Date.now(),
       });

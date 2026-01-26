@@ -17,6 +17,7 @@ import {
   recordEvent as recordPersonalizationEvent,
 } from "../personalization";
 import { tagStepConcepts } from "../personalization/conceptTagger";
+import { normalizeConceptIds } from "../personalization/conceptNormalization";
 
 export function useLiveSession() {
   const sendTimeRef = useRef<number | null>(null);
@@ -76,6 +77,9 @@ export function useLiveSession() {
     const tagResult = stepForTagging
       ? tagStepConcepts(stepForTagging.text)
       : null;
+    const conceptIds = tagResult
+      ? normalizeConceptIds(tagResult.conceptIds)
+      : [];
     const sessionContext = stepForTagging
       ? {
           stepId: stepForTagging.id,
@@ -83,10 +87,7 @@ export function useLiveSession() {
             tagResult?.stepType && tagResult.stepType !== "other"
               ? tagResult.stepType
               : stepForTagging.type,
-          conceptIds:
-            tagResult && tagResult.conceptIds.length > 0
-              ? tagResult.conceptIds
-              : undefined,
+          conceptIds: conceptIds.length > 0 ? conceptIds : undefined,
         }
       : undefined;
     const decision = getPersonalizationDecision({
@@ -347,14 +348,14 @@ export function useHandleMessage(
     const step = stepSnapshotByIdRef.current.get(stepId);
     if (!step) return null;
     const tagResult = tagStepConcepts(step.text);
+    const conceptIds = normalizeConceptIds(tagResult.conceptIds);
     const stepType =
       tagResult.stepType && tagResult.stepType !== "other"
         ? tagResult.stepType
         : step.type;
     return {
       stepType,
-      conceptIds:
-        tagResult.conceptIds.length > 0 ? tagResult.conceptIds : undefined,
+      conceptIds: conceptIds.length > 0 ? conceptIds : undefined,
     };
   }, []);
 
