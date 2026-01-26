@@ -16,6 +16,7 @@ import {
   getDecision as getPersonalizationDecision,
   recordEvent as recordPersonalizationEvent,
 } from "../personalization";
+import { tagStepConcepts } from "../personalization/conceptTagger";
 
 export function useLiveSession() {
   const sendTimeRef = useRef<number | null>(null);
@@ -235,6 +236,7 @@ export function useHandleMessage(
 ) {
   const DEBUG_EQUATION_STEPS = true;
   const stepIndexByIdRef = useRef(new Map<string, number>());
+  const stepSnapshotByIdRef = useRef(new Map<string, EquationStep>());
   const lastTeacherSignalRef = useRef<string | null>(null);
   const lastReexplainStepIdRef = useRef<string | null>(null);
   const [chat, setChat] = useState<ChatMessage[]>([]);
@@ -317,6 +319,22 @@ export function useHandleMessage(
     return null;
   }, []);
 
+  const resolveStepTags = useCallback((stepId?: string | null) => {
+    if (!stepId) return null;
+    const step = stepSnapshotByIdRef.current.get(stepId);
+    if (!step) return null;
+    const tagResult = tagStepConcepts(step.text);
+    const stepType =
+      tagResult.stepType && tagResult.stepType !== "other"
+        ? tagResult.stepType
+        : step.type;
+    return {
+      stepType,
+      conceptIds:
+        tagResult.conceptIds.length > 0 ? tagResult.conceptIds : undefined,
+    };
+  }, []);
+
   const handleMessage = useCallback(
     (message: ServerToClientMessage) => {
       const updateLatencyOnce = () => {
@@ -340,9 +358,12 @@ export function useHandleMessage(
         const stepId = resolveStepIdFromIndex(message.stepIndex);
         lastReexplainStepIdRef.current = stepId;
         if (stepId) {
+          const tags = resolveStepTags(stepId);
           recordPersonalizationEvent({
             type: "reexplain_started",
             stepId,
+            stepType: tags?.stepType,
+            conceptIds: tags?.conceptIds,
             atMs: Date.now(),
           });
         }
@@ -352,9 +373,12 @@ export function useHandleMessage(
           logEvent("ReexplainEnded");
           const stepId = lastReexplainStepIdRef.current;
           if (stepId) {
+            const tags = resolveStepTags(stepId);
             recordPersonalizationEvent({
               type: "reexplain_completed",
               stepId,
+              stepType: tags?.stepType,
+              conceptIds: tags?.conceptIds,
               atMs: Date.now(),
             });
           }
@@ -427,6 +451,7 @@ export function useHandleMessage(
       if (message.type === "equation_step") {
         lastStepIndexRef.current = message.payload.index;
         stepIndexByIdRef.current.set(message.payload.id, message.payload.index);
+        stepSnapshotByIdRef.current.set(message.payload.id, message.payload);
 
         setEquationSteps((prev) => {
           const runId = currentProblemIdRef.current;
@@ -538,7 +563,19 @@ export function useHandleMessage(
         // speak(message.payload.text);
       }
     },
-    [dispatchTeacher, setDebugState, sendTimeRef, stepTimelineRef, lastStepIndexRef, DEBUG_EQUATION_STEPS, interruptTTS, playChunk, markTeacherUtteranceFinal, resolveStepIdFromIndex],
+    [
+      dispatchTeacher,
+      setDebugState,
+      sendTimeRef,
+      stepTimelineRef,
+      lastStepIndexRef,
+      DEBUG_EQUATION_STEPS,
+      interruptTTS,
+      playChunk,
+      markTeacherUtteranceFinal,
+      resolveStepIdFromIndex,
+      resolveStepTags,
+    ],
   );
 
   //Your step status timer

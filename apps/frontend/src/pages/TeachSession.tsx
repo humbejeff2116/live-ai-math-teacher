@@ -20,6 +20,7 @@ import {
   getDecision as getPersonalizationDecision,
   recordEvent as recordPersonalizationEvent,
 } from "../personalization";
+import { tagStepConcepts } from "../personalization/conceptTagger";
 
 const TEACHER_LABEL: Record<TeacherState, string> = {
   idle: "Idle",
@@ -264,13 +265,32 @@ export function TeachingSession() {
       type: "confusion_nudge_dismissed",
       payload: { stepId: nudge.stepId, atMs: Date.now() },
     });
+    const stepForTagging = stepById.get(nudge.stepId);
+    const tagResult = stepForTagging
+      ? tagStepConcepts(stepForTagging.text)
+      : null;
+    const stepType =
+      tagResult?.stepType && tagResult.stepType !== "other"
+        ? tagResult.stepType
+        : stepForTagging?.type;
     recordPersonalizationEvent({
       type: "nudge_dismissed",
       stepId: nudge.stepId,
+      stepType,
+      conceptIds:
+        tagResult && tagResult.conceptIds.length > 0
+          ? tagResult.conceptIds
+          : undefined,
       reason: nudge.reason,
       atMs: Date.now(),
     });
-  }, [teacherMeta.confusionNudge, clearConfusionNudge, isStepRecentlyConfused, wsClient]);
+  }, [
+    teacherMeta.confusionNudge,
+    clearConfusionNudge,
+    isStepRecentlyConfused,
+    wsClient,
+    stepById,
+  ]);
 
   useEffect(() => {
     if (teacherState !== "waiting") return;
@@ -452,11 +472,22 @@ export function TeachingSession() {
     const n = teacherMeta.confusionNudge;
     if (!n) return;
     markStepConfused(n.stepId);
-    const stepType = stepById.get(n.stepId)?.type;
+    const stepForTagging = stepById.get(n.stepId);
+    const tagResult = stepForTagging
+      ? tagStepConcepts(stepForTagging.text)
+      : null;
+    const stepType =
+      tagResult?.stepType && tagResult.stepType !== "other"
+        ? tagResult.stepType
+        : stepForTagging?.type;
     recordPersonalizationEvent({
       type: "confusion_confirmed",
       stepId: n.stepId,
       stepType,
+      conceptIds:
+        tagResult && tagResult.conceptIds.length > 0
+          ? tagResult.conceptIds
+          : undefined,
       reason: n.reason,
       atMs: Date.now(),
     });
@@ -487,11 +518,22 @@ export function TeachingSession() {
   const handleConfusionExplain = () => {
     const n = teacherMeta.confusionNudge;
     if (!n) return;
-    const stepType = stepById.get(n.stepId)?.type;
+    const stepForTagging = stepById.get(n.stepId);
+    const tagResult = stepForTagging
+      ? tagStepConcepts(stepForTagging.text)
+      : null;
+    const stepType =
+      tagResult?.stepType && tagResult.stepType !== "other"
+        ? tagResult.stepType
+        : stepForTagging?.type;
     recordPersonalizationEvent({
       type: "confusion_confirmed",
       stepId: n.stepId,
       stepType,
+      conceptIds:
+        tagResult && tagResult.conceptIds.length > 0
+          ? tagResult.conceptIds
+          : undefined,
       reason: n.reason,
       atMs: Date.now(),
     });
@@ -546,11 +588,22 @@ export function TeachingSession() {
         type: "confusion_nudge_dismissed",
         payload: { stepId: n.stepId, atMs: Date.now() },
       });
-      const stepType = stepById.get(n.stepId)?.type;
+      const stepForTagging = stepById.get(n.stepId);
+      const tagResult = stepForTagging
+        ? tagStepConcepts(stepForTagging.text)
+        : null;
+      const stepType =
+        tagResult?.stepType && tagResult.stepType !== "other"
+          ? tagResult.stepType
+          : stepForTagging?.type;
       recordPersonalizationEvent({
         type: "nudge_dismissed",
         stepId: n.stepId,
         stepType,
+        conceptIds:
+          tagResult && tagResult.conceptIds.length > 0
+            ? tagResult.conceptIds
+            : undefined,
         reason: n.reason,
         atMs: Date.now(),
       });
@@ -558,6 +611,10 @@ export function TeachingSession() {
         type: "confusion_dismissed",
         stepId: n.stepId,
         stepType,
+        conceptIds:
+          tagResult && tagResult.conceptIds.length > 0
+            ? tagResult.conceptIds
+            : undefined,
         reason: n.reason,
         atMs: Date.now(),
       });
