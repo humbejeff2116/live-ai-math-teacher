@@ -132,7 +132,7 @@ export function QuickSettings() {
   };
 
   return (
-    <div className="flex h-full flex-col rounded-xl border border-slate-200 bg-white shadow-sm">
+    <div className="flex h-full min-h-0 flex-col rounded-xl border border-slate-200 bg-white shadow-sm">
       <div className="flex items-center justify-between border-b border-slate-200 px-4 py-3">
         <div>
           <div className="flex items-center gap-2 text-sm font-semibold text-slate-700">
@@ -151,7 +151,9 @@ export function QuickSettings() {
       </div>
 
       {open && (
-        <div className="flex flex-1 flex-col gap-4 px-4 py-4 text">
+        <>
+          {/* min-h-0 keeps this flex child scrollable instead of forcing the card taller */}
+          <div className="flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto px-4 py-4 text">
           <label className="text-xs font-semibold text-slate-600">
             Teaching style
             <select
@@ -202,8 +204,7 @@ export function QuickSettings() {
             />
           </label>
 
-        {/* This section breaks out */}
-          <div className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-3">
+          <div className="shadow-sm rounded-lg border  px-3 py-3">
             <div className="flex items-center justify-between">
               <div className="text-xs font-semibold text-slate-700">
                 Personalization (dev)
@@ -268,7 +269,8 @@ export function QuickSettings() {
           </div>
 
           <DebugToggle />
-        </div>
+          </div>
+        </>
       )}
     </div>
   );

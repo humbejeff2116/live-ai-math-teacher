@@ -31,7 +31,7 @@ export function SessionShell({
         </div>
       )}
 
-      <div className="mx-auto w-full max-w-6xl flex-1 min-h-0 px-4 py-4">
+      <div className="mx-auto w-full max-w-6xl flex-1 min-h-0 px-4 py-4 mb-10">
         {/*NOTE... On mobile it can be fine, but if you ever see odd height behavior, you
         can safely set it always: Replace: lg:grid-rows-[minmax(0,1fr)] with:
         grid-rows-[minmax(0,1fr)] */}
