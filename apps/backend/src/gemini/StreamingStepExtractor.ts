@@ -7,6 +7,7 @@ export class StreamingStepExtractor {
   private stepIndex = 0;
 
   private lastEmittedEquationNorm: string | null = null;
+  private emittedEquationNorms = new Set<string>();
 
   private static DEBUG_EQUATION_EXTRACTION = false;
 
@@ -36,25 +37,32 @@ export class StreamingStepExtractor {
     const candidates = this.extractEquationCandidates(sanitized);
     if (candidates.length === 0) return null;
 
-    // Prefer the most recent equation in the stream
-    const equation = candidates[candidates.length - 1];
+    // Prefer the earliest new equation in the stream
+    let chosenEquation: string | null = null;
+    let chosenNorm: string | null = null;
 
-    const equationNorm = this.normalizeEquation(equation);
-    if (!equationNorm) return null;
-
-    // Dedupe: if Gemini repeats the same equation, don’t emit again
-    if (this.lastEmittedEquationNorm === equationNorm) {
-      if (StreamingStepExtractor.DEBUG_EQUATION_EXTRACTION) {
-        console.log("[equation_deduped]", equation);
+    for (const candidate of candidates) {
+      const norm = this.normalizeEquation(candidate);
+      if (!norm) continue;
+      if (this.emittedEquationNorms.has(norm)) {
+        if (StreamingStepExtractor.DEBUG_EQUATION_EXTRACTION) {
+          console.log("[equation_deduped]", candidate);
+        }
+        continue;
       }
-      return null;
+      chosenEquation = candidate;
+      chosenNorm = norm;
+      break;
     }
 
-    this.lastEmittedEquationNorm = equationNorm;
+    if (!chosenEquation || !chosenNorm) return null;
+
+    this.lastEmittedEquationNorm = chosenNorm;
+    this.emittedEquationNorms.add(chosenNorm);
 
     if (StreamingStepExtractor.DEBUG_EQUATION_EXTRACTION) {
       console.log("[equation_extracted]", {
-        equation,
+        equation: chosenEquation,
         index: this.stepIndex,
       });
     }
@@ -65,7 +73,7 @@ export class StreamingStepExtractor {
     const step: EquationStep = {
       id: randomUUID(),
       index: this.stepIndex++,
-      equation,
+      equation: chosenEquation,
       text: textSnippet.length > 0 ? textSnippet : rawText,
       type: this.inferType(rawText),
     };
@@ -142,6 +150,7 @@ export class StreamingStepExtractor {
     this.steps = [];
     this.stepIndex = 0;
     this.lastEmittedEquationNorm = null;
+    this.emittedEquationNorms.clear();
   }
 
   getSteps() {
