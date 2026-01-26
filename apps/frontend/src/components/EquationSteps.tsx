@@ -36,6 +36,8 @@ export function EquationSteps({
   onStepClick,
   showHeader = true,
 }: EquationStepsProps) {
+  const isDev = import.meta.env.MODE !== "production";
+
   useEffect(() => {
     if (!hoverStepId) return;
 
@@ -112,6 +114,56 @@ export function EquationSteps({
         }`}
       </style>
       {showHeader && <h3>Solution Steps</h3>}
+      {isDev && (
+        <div style={{ marginBottom: 6, opacity: 0.6 }}>
+          <div
+            style={{
+              display: "flex",
+              alignItems: "center",
+              gap: 8,
+              minWidth: 0,
+              flexWrap: "nowrap",
+            }}
+          >
+            <strong style={{ flex: "0 0 auto" }}>Step 0</strong>
+            <span
+              style={{
+                fontSize: 10,
+                padding: "2px 6px",
+                borderRadius: 999,
+                background: "rgba(148,163,184,0.16)",
+                color: "#475569",
+                border: "1px solid rgba(148,163,184,0.35)",
+                fontWeight: 600,
+                flex: "0 0 auto",
+              }}
+            >
+              Audio pending
+            </span>
+            <span
+              title="DEV: This is a very long badge label to verify truncation without horizontal scroll."
+              style={{
+                marginLeft: "auto",
+                fontSize: 11,
+                padding: "2px 8px",
+                borderRadius: 999,
+                fontWeight: 600,
+                whiteSpace: "nowrap",
+                background: badgeStyles.muted.background,
+                color: badgeStyles.muted.color,
+                border: badgeStyles.muted.border,
+                maxWidth: "55%",
+                overflow: "hidden",
+                textOverflow: "ellipsis",
+                flex: "0 1 auto",
+              }}
+            >
+              DEV: This is a very long badge label to verify truncation without
+              horizontal scroll.
+            </span>
+          </div>
+        </div>
+      )}
 
       {steps.map((step) => {
         const isActive = step.id === activeStepId;
@@ -219,8 +271,18 @@ export function EquationSteps({
                   {pendingStepLabel}
                 </div>
               )}
-              <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                <strong>Step {step.uiIndex}</strong>
+              <div
+                style={{
+                  display: "flex",
+                  alignItems: "center",
+                  gap: 8,
+                  minWidth: 0,
+                  flexWrap: "nowrap",
+                }}
+              >
+                <strong style={{ flex: "0 0 auto" }}>
+                  Step {step.uiIndex}
+                </strong>
                 {audioBadge && (
                   <span
                     style={{
@@ -231,14 +293,16 @@ export function EquationSteps({
                       color: audioBadge.color,
                       border: audioBadge.border,
                       fontWeight: 600,
+                      flex: "0 0 auto",
                     }}
                   >
                     {audioBadge.label}
                   </span>
                 )}
-                {/* TODO... fix this. It overflows the main container causing equation steps section to display a scroll bar */}
+                
                 {stepBadge && (
                   <span
+                    title={stepBadge.label}
                     style={{
                       marginLeft: "auto",
                       fontSize: 11,
@@ -249,6 +313,10 @@ export function EquationSteps({
                       background: badgeStyles[stepBadge.tone].background,
                       color: badgeStyles[stepBadge.tone].color,
                       border: badgeStyles[stepBadge.tone].border,
+                      maxWidth: "55%",
+                      overflow: "hidden",
+                      textOverflow: "ellipsis",
+                      flex: "0 1 auto",
                     }}
                   >
                     {stepBadge.label}
