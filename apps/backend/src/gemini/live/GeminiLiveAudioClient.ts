@@ -45,6 +45,7 @@ export class GeminiLiveAudioClient {
   private currentTurnDidStart = false;
 
   private hasConnectedOnce = false;
+  private suppressAudio = false;
 
   constructor(
     private onAudioChunk: (
@@ -172,7 +173,9 @@ export class GeminiLiveAudioClient {
               const mimeType = part.inlineData.mimeType;
               chunkCount += 1;
               byteCount += buffer.length;
-              this.onAudioChunk(buffer, this.activeStepId, mimeType);
+              if (!this.suppressAudio) {
+                this.onAudioChunk(buffer, this.activeStepId, mimeType);
+              }
             }
           }
           if (chunkCount > 0) {
@@ -251,6 +254,8 @@ export class GeminiLiveAudioClient {
     opts?: { emitStepEvents?: boolean },
   ): Promise<void> {
     console.log(`GeminiLiveAudioClient::Preparing to speak step: ${stepId}`);
+
+    this.suppressAudio = false;
 
     const emit = opts?.emitStepEvents !== false;
 
@@ -344,6 +349,15 @@ export class GeminiLiveAudioClient {
       this.ws?.close(); // optional: or keep open if you want
     } catch {}
     this.clearConnection();
+  }
+
+  // Drop current turn audio without closing the transport.
+  stopCurrentPlayback() {
+    this.suppressAudio = true;
+    if (this.currentTurnResolver) {
+      this.currentTurnResolver();
+      this.currentTurnResolver = null;
+    }
   }
 
   resume() {

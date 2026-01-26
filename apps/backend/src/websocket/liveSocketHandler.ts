@@ -16,7 +16,7 @@ export function liveSocketHandler(ws: WebSocket) {
       }
 
       case "user_interrupt":
-        session.interrupt();
+        session.interruptGenerationOnly();
         break;
 
       case "resume_request":

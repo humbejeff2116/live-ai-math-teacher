@@ -208,7 +208,7 @@ export class GeminiLiveSession {
           audioClientRunning: this.audioClient.isRunning(),
         });
       }
-      this.interrupt();
+      this.interruptGenerationOnly();
       this.setState("thinking", { type: "teacher_thinking" });
 
       const isContinuing =
@@ -249,7 +249,7 @@ export class GeminiLiveSession {
         return;
       }
 
-      this.interrupt();
+      this.interruptGenerationOnly();
 
       this.setState("re-explaining", {
         type: "teacher_reexplaining",
@@ -280,10 +280,40 @@ export class GeminiLiveSession {
     }
   }
 
-  interrupt() {
+  // Abort generation and stop current audio without resetting the transport clock.
+  interruptGenerationOnly() {
     const now = Date.now();
     if (isDev) {
-      console.log("GeminiLiveSession::interrupt", {
+      console.log("GeminiLiveSession::interruptGenerationOnly", {
+        atMs: now,
+        teacherState: this.teacherState,
+        audioClientRunning: this.audioClient.isRunning(),
+        willHaltPlayback: false,
+      });
+    }
+    this.lastInterruptAtMs = now;
+    if (this.teacherState === "explaining") {
+      this.setState("interrupted", {
+        type: "teacher_interrupted",
+        lastCompletedStepIndex:
+          this.resumeContext.lastCompletedStep?.index ?? null,
+      });
+    }
+
+    this.abortController?.abort();
+    this.abortController = null;
+    this.aborted = true;
+    this.isSpeaking = false;
+    this.stepAudioTracker.interrupt();
+    this.audioClient.stopCurrentPlayback();
+
+    this.send({ type: "ai_interrupted" });
+  }
+
+  interruptFullReset() {
+    const now = Date.now();
+    if (isDev) {
+      console.log("GeminiLiveSession::interruptFullReset", {
         atMs: now,
         teacherState: this.teacherState,
         audioClientRunning: this.audioClient.isRunning(),
@@ -307,7 +337,7 @@ export class GeminiLiveSession {
     this.audioClock.reset();
     this.audioClient.haltPlayback();
     if (isDev) {
-      console.log("GeminiLiveSession::interrupt haltPlayback called", {
+      console.log("GeminiLiveSession::interruptFullReset haltPlayback called", {
         atMs: Date.now(),
       });
     }
@@ -353,7 +383,7 @@ export class GeminiLiveSession {
       const step = this.resumeContext.lastCompletedStep;
       if (!step || step.id !== stepId) return;
 
-      this.interrupt();
+      this.interruptGenerationOnly();
 
       const prompt = `
       Re-explain ONLY this step.
@@ -520,7 +550,7 @@ export class GeminiLiveSession {
           });
 
           // IMPORTANT: interrupt any current speech first
-          this.interrupt();
+          this.interruptGenerationOnly();
 
           const prompt = buildConfusionNudgePrompt({
             stepNumber: step.index + 1,
@@ -546,7 +576,7 @@ export class GeminiLiveSession {
       // ---- STAGE 2: Full adaptive re-explain ----
       this.pendingOffer = null;
 
-      this.interrupt();
+      this.interruptGenerationOnly();
 
       this.setState("re-explaining", {
         type: "teacher_reexplaining",
@@ -616,7 +646,7 @@ export class GeminiLiveSession {
     }
 
     // Always interrupt before speaking
-    this.interrupt();
+    this.interruptGenerationOnly();
 
     if (payload.choice === "hint") {
       const prompt = buildStepHintPrompt({
@@ -667,11 +697,12 @@ export class GeminiLiveSession {
   }
 
   close() {
-    this.interrupt();
+    this.interruptFullReset();
     this.audioClient.close();
   }
 
   resetProblem() {
+    this.interruptFullReset();
     this.stepExtractor.reset();
     this.resumeContext = {
       lastCompletedStep: undefined,
