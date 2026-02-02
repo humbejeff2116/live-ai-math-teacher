@@ -68,8 +68,7 @@ export function QuickSettings() {
 
   useEffect(() => {
     if (!open) return;
-    refreshPersonalization();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    Promise.resolve().then(() => refreshPersonalization());
   }, [open]);
 
   const inferredPreferences = useMemo(() => {
@@ -225,7 +224,7 @@ export function QuickSettings() {
             />
           </label>
 
-          <div className="shadow-sm rounded-lg border px-3 py-3">
+          <div className="bg-slate-50 shadow-sm rounded-lg border px-3 py-3">
             <div className="flex items-center justify-between">
               <div className="text-xs font-semibold text-slate-700">
                 Personalization (dev)

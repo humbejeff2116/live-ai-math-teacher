@@ -16,7 +16,7 @@ export class GeminiLiveStreamingClient implements GeminiStreamingClient {
   ): AsyncIterable<GeminiStreamChunk> {
     try {
       const stream = await this.client.streamGenerate({
-        model: opts?.model ?? "gemini-2.5-flash",
+        model: opts?.model ?? "gemini-2.5-flash-lite",
         input: prompt,
         signal: opts?.signal,
       });

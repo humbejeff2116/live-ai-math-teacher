@@ -128,9 +128,9 @@ export function ConfusionConfirmToast(props: {
           <div className="text-xs font-medium text-slate-700">
             {isPending ? (
               pendingChoice === "hint" ? (
-                <>Got it — sending a small hint…</>
+                <>Got it — sending a small hint...</>
               ) : (
-                <>Got it — I’ll re-explain that step…</>
+                <>Got it — I'll re-explain that step...</>   
               )
             ) : (
               <>Want a hint for step {stepIndex + 1}?</>
@@ -139,9 +139,7 @@ export function ConfusionConfirmToast(props: {
         </div>
 
         {(alwaysShowReason || showReason) && reasonText && (
-          <div className="mt-1 text-xs italic text-slate-500">
-            {reasonText}
-          </div>
+          <div className="mt-1 text-xs italic text-slate-500">{reasonText}</div>
         )}
 
         {showNudgeHint && (
@@ -201,7 +199,9 @@ export function ConfusionConfirmToast(props: {
             disabled={isPending}
             className={[
               "rounded-full px-2 py-1 text-xs font-semibold",
-              isPending ? "text-slate-300" : "text-slate-500 hover:bg-slate-100",
+              isPending
+                ? "text-slate-300"
+                : "text-slate-500 hover:bg-slate-100",
             ].join(" ")}
           >
             I'm good, continue
@@ -213,7 +213,9 @@ export function ConfusionConfirmToast(props: {
             disabled={isPending}
             className={[
               "rounded-full px-2 py-1 text-xs font-semibold",
-              isPending ? "text-slate-300" : "text-slate-500 hover:bg-slate-100",
+              isPending
+                ? "text-slate-300"
+                : "text-slate-500 hover:bg-slate-100",
             ].join(" ")}
             aria-label="Dismiss"
             title={isPending ? "Working..." : "Dismiss"}

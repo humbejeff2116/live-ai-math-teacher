@@ -1,11 +1,16 @@
 import express from "express";
 import cors from "cors";
 import path from "node:path";
-import { pingRenderService } from "./schedules/pingRenderService.js";
+import { env } from "./config/env.js";
 
 export const app = express();
 
-if (process.env.NODE_ENV !== "production") app.use(cors());
+if (process.env.NODE_ENV !== "production") app.use(
+  cors({
+    origin: env.allowedOrigins,
+  }),
+);
+
 app.use(express.json());
 
 app.get("/healthz", (_req, res) => res.status(200).send("ok"));
@@ -18,8 +23,6 @@ app.get("/healthz", (_req, res) => res.status(200).send("ok"));
  *   /app/public (contains index.html, assets/, etc)
  */
 if (process.env.NODE_ENV === "production") {
-  // Ping the render service every 5 minutes to keep it awake
-  pingRenderService();
   console.log("Serving static frontend files");
   const publicDir =
     process.env.PUBLIC_DIR ?? path.resolve(process.cwd(), "public");

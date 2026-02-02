@@ -65,6 +65,7 @@ export const env = {
   publicDir: process.env.PUBLIC_DIR,
   qstashToken: process.env.QSTASH_TOKEN,
   koyebServiceUrl: process.env.KOYEB_SERVICE_URL,
+  allowedOrigins: process.env.CORS_ORIGIN?.split(",") ?? [],
 
   /**
    * Gemini API configuration

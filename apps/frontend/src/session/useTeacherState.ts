@@ -1,5 +1,10 @@
-// useTeacherState.ts
-import type { ConfusionReason, ConfusionSeverity, ConfusionSource, ServerToClientMessage, TeacherState } from "@shared/types";
+import type { 
+  ConfusionReason, 
+  ConfusionSeverity, 
+  ConfusionSource, 
+  ServerToClientMessage, 
+  TeacherState 
+} from "@shared/types";
 import { useCallback, useReducer } from "react";
 import { logEvent } from "../lib/debugTimeline";
 import { recordEvent as recordPersonalizationEvent } from "../personalization";
@@ -22,6 +27,14 @@ type TeacherMeta = {
     severity: ConfusionSeverity;
     atMs: number;
   } | null;
+  silenceNudge: {
+    offerId: string;
+    stepId: string;
+    stepIndex: number;
+    reason: "no_reply";
+    severity: "low";
+    atMs: number;
+  } | null;
 };
 
 type TeacherModel = {
@@ -32,7 +45,8 @@ type TeacherModel = {
 type Action =
   | { type: "server_message"; message: ServerToClientMessage }
   | { type: "teacher_utterance_final"; text: string; atMs: number }
-  | { type: "clear_nudge" }
+  | { type: "clear_confusion_nudge" }
+  | { type: "clear_silence_nudge" }
   | { type: "reset" };
 
 function looksLikeQuestion(text: string): boolean {
@@ -67,6 +81,7 @@ function reducer(model: TeacherModel, action: Action): TeacherModel {
           awaitingAnswerSinceMs: null,
           lastTeacherUtteranceAtMs: null,
           confusionNudge: null,
+          silenceNudge: null,
         },
       };
     }
@@ -84,24 +99,32 @@ function reducer(model: TeacherModel, action: Action): TeacherModel {
       };
     }
 
-    case "clear_nudge": {
-      return {
-        ...model,
-        meta: { ...model.meta, confusionNudge: null },
-      };
-    }
+    case "clear_confusion_nudge":
+      return { ...model, meta: { ...model.meta, confusionNudge: null } };
+
+    case "clear_silence_nudge":
+      return { ...model, meta: { ...model.meta, silenceNudge: null } };
 
     case "server_message": {
       const msg = action.message;
       switch (msg.type) {
-        case "teacher_thinking":
-          return { ...model, state: "thinking" };
-
         case "teacher_explaining":
-          return { ...model, state: "explaining" };
-
         case "teacher_reexplaining":
-          return { ...model, state: "re-explaining" };
+        case "teacher_thinking":
+          return {
+            ...model,
+            state:
+              msg.type === "teacher_explaining"
+                ? "explaining"
+                : msg.type === "teacher_reexplaining"
+                  ? "re-explaining"
+                  : "thinking",
+            meta: {
+              ...model.meta,
+              awaitingAnswerSinceMs: null,
+              silenceNudge: null, // important: teacher is talking, silence offer is irrelevant
+            },
+          };
 
         case "teacher_interrupted":
           return {
@@ -110,14 +133,13 @@ function reducer(model: TeacherModel, action: Action): TeacherModel {
             meta: {
               ...model.meta,
               awaitingAnswerSinceMs: null,
+              silenceNudge: null, // important: silence is only for waiting
             },
           };
 
         case "teacher_waiting": {
           const now = Date.now();
-          const awaiting =
-            msg.awaitingAnswerSinceMs ??
-            (model.meta.lastUtteranceWasQuestion ? now : null);
+          const awaiting = msg.awaitingAnswerSinceMs ?? now;
           if (isDev) {
             console.log("[useTeacherState] teacher_waiting", {
               atMs: now,
@@ -137,6 +159,7 @@ function reducer(model: TeacherModel, action: Action): TeacherModel {
             meta: {
               ...model.meta,
               awaitingAnswerSinceMs: awaiting,
+              // don't auto-clear silence here; we want it to remain until dismissed or teacher speaks again
             },
           };
         }
@@ -170,10 +193,34 @@ function reducer(model: TeacherModel, action: Action): TeacherModel {
           };
         }
 
+        case "silence_nudge_offered":
+          if (isDev) {
+            console.log("[useTeacherState] silence_nudge_offered", {
+              atMs: Date.now(),
+              payload: msg.payload,
+            });
+          }
+          return {
+            ...model,
+            meta: {
+              ...model.meta,
+              silenceNudge: {
+                offerId: msg.payload.offerId,
+                stepId: msg.payload.stepId,
+                stepIndex: msg.payload.stepIndex,
+                reason: msg.payload.reason,
+                severity: msg.payload.severity,
+                atMs: msg.payload.atMs,
+              },
+            },
+          };
+
         default:
           return model;
       }
     }
+    default:
+      return model;
   }
 }
 
@@ -185,6 +232,7 @@ export function useTeacherState() {
       awaitingAnswerSinceMs: null,
       lastTeacherUtteranceAtMs: null,
       confusionNudge: null,
+      silenceNudge: null,
     },
   });
 
@@ -204,7 +252,12 @@ export function useTeacherState() {
   );
 
   const clearConfusionNudge = useCallback(
-    () => dispatch({ type: "clear_nudge" }),
+    () => dispatch({ type: "clear_confusion_nudge" }),
+    [],
+  );
+
+  const clearSilenceNudge = useCallback(
+    () => dispatch({ type: "clear_silence_nudge" }),
     [],
   );
 
@@ -217,5 +270,6 @@ export function useTeacherState() {
     markTeacherUtteranceFinal,
     resetTeacher,
     clearConfusionNudge,
+    clearSilenceNudge,
   };
 }

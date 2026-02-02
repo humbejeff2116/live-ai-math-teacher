@@ -209,7 +209,7 @@ export function EquationSteps({
           <Fragment key={step.id}>
             <div
               id={`step-${step.id}`}
-              className={confusionClassName}
+              className={`${confusionClassName} shadow-sm rounded-md border border-slate-200`}
               title={
                 isConfusionPending ? "Waiting for confirmation..." : undefined
               }
@@ -223,31 +223,33 @@ export function EquationSteps({
                 position: "relative",
                 cursor: onStepClick ? "pointer" : "default",
                 textAlign: "left",
+                // border: !isActive ? "1px solid red" : "",
+                marginBottom: "1rem",
                 borderLeft: isActive
                   ? "4px solid #22c55e"
                   : isPreview
-                  ? "4px solid #60a5fa"
-                  : isPending
-                  ? "2px dashed rgba(99,102,241,0.5)"
-                  : isHovered
-                  ? "1px dashed rgba(99,102,241,0.35)"
-                  : "4px solid transparent",
+                    ? "4px solid #60a5fa"
+                    : isPending
+                      ? "2px dashed rgba(99,102,241,0.5)"
+                      : isHovered
+                        ? "1px dashed rgba(99,102,241,0.35)"
+                        : "4px solid transparent",
                 background: isActive
                   ? "rgba(99,102,241,0.12)"
                   : isPreview
-                  ? "#eff6ff"
-                  : isPending
-                  ? "rgba(99,102,241,0.04)"
-                  : isHovered
-                  ? "rgba(99,102,241,0.06)"
-                  : "transparent",
+                    ? "#eff6ff"
+                    : isPending
+                      ? "rgba(99,102,241,0.04)"
+                      : isHovered
+                        ? "rgba(99,102,241,0.06)"
+                        : "transparent",
                 animation: isConfusionPending
                   ? "confusionPulse 2.4s ease-in-out infinite"
                   : isPending
-                  ? "pendingPulse 2.1s ease-in-out infinite"
-                  : isAnimated
-                  ? "pulseGlow 1.2s ease-in-out infinite"
-                  : undefined,
+                    ? "pendingPulse 2.1s ease-in-out infinite"
+                    : isAnimated
+                      ? "pulseGlow 1.2s ease-in-out infinite"
+                      : undefined,
                 transition: "background 120ms ease, border-color 120ms ease",
               }}
             >
@@ -299,7 +301,7 @@ export function EquationSteps({
                     {audioBadge.label}
                   </span>
                 )}
-                
+
                 {stepBadge && (
                   <span
                     title={stepBadge.label}

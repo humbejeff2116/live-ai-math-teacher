@@ -3,7 +3,7 @@ import { useLiveSession } from "../session/useLiveSession";
 import { useSpeechInput } from "../speech/useSpeechInput";
 import { Waveform } from "../components/WaveForm";
 import { WaveSeekConfirm } from "../components/WaveSeekConfirm";
-import type { TeacherState } from "@shared/types";
+import type { SilenceHelpChoice, TeacherState } from "@shared/types";
 import { useWaveform } from "../session/useWaveform";
 import { useWaveSeek } from "../session/useWaveSeek";
 import { SessionShell } from "../components/session/SessionShell";
@@ -22,6 +22,8 @@ import {
 } from "../personalization";
 import { tagStepConcepts } from "../personalization/conceptTagger";
 import { normalizeConceptIds } from "../personalization/conceptNormalization";
+import { useSilenceNudgeScheduler } from "@/session/useSilenceNudgeScheduler";
+import { SilenceConfirmToast } from "@/components/session/SilenceConfirmToast";
 
 const TEACHER_LABEL: Record<TeacherState, string> = {
   idle: "Idle",
@@ -55,11 +57,6 @@ export function TeachingSession() {
   );
   const { state: debugState } = useDebugState();
   const { reconnect } = useWebSocketState();
-
-  const waitingNudgeSentRef = useRef(false);
-  const waitingSinceMsRef = useRef<number | null>(null);
-  const waitingNudgeTimerRef = useRef<number | null>(null);
-  const waitingNudgeRetryRef = useRef(false);
   const lastAudioStateRef = useRef<string | null>(null);
   const confusionReExplainPendingRef = useRef<number | null>(null);
   const lastConfusionReExplainToastRef = useRef<number | null>(null);
@@ -67,6 +64,8 @@ export function TeachingSession() {
   const actionToastCounterRef = useRef(0);
   const stepConfusedAtRef = useRef<Map<string, number>>(new Map());
   const reExplainDelayTimeoutRef = useRef<number | null>(null);
+  const silenceHandlingDelayRef = useRef<number | null>(null);
+  const activeSilenceOfferIdRef = useRef<string | null>(null);
   const SOFT_MEMORY_MS = 45_000;
 
   const {
@@ -87,36 +86,45 @@ export function TeachingSession() {
     getWSCLient,
     teacherMeta,
     clearConfusionNudge,
+    clearSilenceNudge,
   } = useLiveSession();
 
-  const { audioState, waveform, currentTimeMs, seekWithFadeMs, unlockAudio } =
-    liveAudio;
+  const { 
+    audioState, 
+    waveform, 
+    currentTimeMs, 
+    seekWithFadeMs, 
+    unlockAudio 
+  } = liveAudio;
+
   const wsClient = getWSCLient();
 
-  const { startListening, stopListening, micLevel, isUserSpeaking } =
-    useSpeechInput(
-      (text) => {
-        if (isListening) handleStudentSpeechFinal(text);
-        else sendUserMessage(text);
-      },
-      setIsListening,
-      {
-        getStepIdHint: () => activeStepId ?? null,
-        sendConfusion: (payload) => {
-          wsClient?.send({
-            type: "confusion_signal",
-            payload: {
-              source: payload.source,
-              reason: payload.reason,
-              severity: payload.severity,
-              text: payload.text,
-              stepIdHint: payload.stepIdHint ?? null,
-              observedAtMs: payload.observedAtMs,
-            },
-          });
+  const { 
+    startListening, 
+    stopListening, 
+    micLevel, 
+    isUserSpeaking 
+  } = useSpeechInput((text) => {
+    if (isListening) handleStudentSpeechFinal(text);
+    else sendUserMessage(text);
+  },
+  setIsListening,
+  {
+    getStepIdHint: () => activeStepId ?? null,
+    sendConfusion: (payload) => {
+      wsClient?.send({
+        type: "confusion_signal",
+        payload: {
+          source: payload.source,
+          reason: payload.reason,
+          severity: payload.severity,
+          text: payload.text,
+          stepIdHint: payload.stepIdHint ?? null,
+          observedAtMs: payload.observedAtMs,
         },
-      },
-    );
+      });
+    },
+  });
 
   const stepTimeline = getStepTimeline();
   const activeStepId = stepTimeline.getActiveStepMonotonic(currentTimeMs);
@@ -152,6 +160,10 @@ export function TeachingSession() {
     resumeFromStep,
   );
 
+  // If the student starts typing, stop any “silence” nudging visuals immediately.
+  const isTyping = input.trim().length > 0;
+  const silenceNudge = teacherMeta.silenceNudge;
+  const hasSilenceNudge = Boolean(silenceNudge);
   const animatedStepId = hoverStepId ?? activeStepId ?? null;
   const confusionPendingStepId = teacherMeta.confusionNudge?.stepId;
   const confusionConfirmedStepIndex = debugState.confusionHandledStepIndex;
@@ -164,14 +176,21 @@ export function TeachingSession() {
   const showConfusionIdleHint =
     !teacherMeta.confusionNudge && !confusionPending && !showCooldownHint;
   const isDemoNarrative = isDev && demoNarrativeMode;
+  const waitingAgeMs =
+    teacherState === "waiting" && teacherMeta.awaitingAnswerSinceMs != null
+      ? Math.max(0, nowMs - teacherMeta.awaitingAnswerSinceMs)
+      : null;
   const confusionReasonText = useMemo(() => {
     const n = teacherMeta.confusionNudge;
     if (!n) return null;
     switch (n.reason) {
       case "hesitation":
         return "Detected hesitation";
-      case "pause":
+      case "pause": {
+        if (n.source === "system" && n.severity === "low")
+          return "Waiting for your reply";
         return "Long pause after explanation";
+      }
       case "wrong_answer":
         return "Answer didn't match the last step";
       case "repeat_request":
@@ -193,6 +212,7 @@ export function TeachingSession() {
   const visibleSteps = equationSteps.filter(
     (step) => step.runId === currentProblemId,
   );
+
   const stepIndexById = useMemo(
     () =>
       Object.fromEntries(
@@ -214,6 +234,42 @@ export function TeachingSession() {
     expectsAudio &&
     (lastAudioChunkAtMs == null || nowMs - lastAudioChunkAtMs > 1500);
 
+    const lastVisibleStepId =
+      visibleSteps.length > 0
+        ? visibleSteps[visibleSteps.length - 1]!.id
+        : null;
+
+    const silenceStepIdHint = activeStepId ?? lastVisibleStepId ?? null;
+
+  useSilenceNudgeScheduler({
+    enabled: teacherState === "waiting",
+    awaitingAnswerSinceMs: teacherMeta.awaitingAnswerSinceMs,
+    hasSilenceNudge,
+    isTyping,
+    wsClient,
+    stepIdHint: silenceStepIdHint,
+    delayMs: 6500,
+    isDev,
+  });
+
+
+  // if user starts typing while silence toast is visible => dismiss + cooldown server-side
+  useEffect(() => {
+    if (!silenceNudge) return;
+    if (!isTyping) return;
+
+    if (silenceHandlingDelayRef.current != null) {
+      window.clearTimeout(silenceHandlingDelayRef.current);
+      silenceHandlingDelayRef.current = null;
+    }
+
+    wsClient?.send({
+      type: "silence_nudge_dismissed",
+      payload: { offerId: silenceNudge.offerId, atMs: Date.now() },
+    });
+    clearSilenceNudge();
+  }, [clearSilenceNudge, isTyping, silenceNudge, wsClient]);
+
   useEffect(() => {
     if (lastAudioStateRef.current === audioState) return;
     if (audioState === "playing") logEvent("AudioPlay");
@@ -221,34 +277,6 @@ export function TeachingSession() {
     if (audioState === "interrupted") logEvent("AudioInterrupted");
     lastAudioStateRef.current = audioState;
   }, [audioState]);
-
-  useEffect(() => {
-    if (teacherState === "waiting") {
-      if (waitingSinceMsRef.current == null) {
-        waitingSinceMsRef.current = Date.now();
-      }
-      return;
-    }
-
-    waitingSinceMsRef.current = null;
-    waitingNudgeSentRef.current = false;
-    waitingNudgeRetryRef.current = false;
-    if (waitingNudgeTimerRef.current != null) {
-      window.clearTimeout(waitingNudgeTimerRef.current);
-      waitingNudgeTimerRef.current = null;
-    }
-  }, [teacherState]);
-
-  useEffect(() => {
-    if (teacherMeta.confusionNudge) {
-      setConfusionCooldownUntilMs(null);
-      if (waitingNudgeTimerRef.current != null) {
-        window.clearTimeout(waitingNudgeTimerRef.current);
-        waitingNudgeTimerRef.current = null;
-      }
-      waitingNudgeRetryRef.current = false;
-    }
-  }, [teacherMeta.confusionNudge]);
 
   const isStepRecentlyConfused = useCallback((stepId: string) => {
     const lastConfusedAt = stepConfusedAtRef.current.get(stepId);
@@ -272,6 +300,23 @@ export function TeachingSession() {
       }
       reExplainDelayTimeoutRef.current = window.setTimeout(() => {
         reExplainDelayTimeoutRef.current = null;
+        sendFn();
+      }, 450);
+    },
+    [isDemoNarrative],
+  );
+
+  const sendWithSilenceHandlingDelay = useCallback(
+    (sendFn: () => void) => {
+      if (!isDemoNarrative) {
+        sendFn();
+        return;
+      }
+      if (silenceHandlingDelayRef.current != null) {
+        window.clearTimeout(silenceHandlingDelayRef.current);
+      }
+      silenceHandlingDelayRef.current = window.setTimeout(() => {
+        silenceHandlingDelayRef.current = null;
         sendFn();
       }, 450);
     },
@@ -315,110 +360,6 @@ export function TeachingSession() {
   ]);
 
   useEffect(() => {
-    const waitingSinceMs =
-      teacherMeta.awaitingAnswerSinceMs ?? waitingSinceMsRef.current;
-    const waitingSinceSource =
-      teacherMeta.awaitingAnswerSinceMs != null
-        ? "teacherMeta"
-        : waitingSinceMsRef.current != null
-          ? "clientFallback"
-          : "none";
-    const shouldSchedule =
-      teacherState === "waiting" &&
-      waitingSinceMs != null &&
-      !teacherMeta.confusionNudge &&
-      !waitingNudgeSentRef.current;
-    const alreadyScheduled = waitingNudgeTimerRef.current != null;
-
-    if (isDev) {
-      console.log("[TeachingSession] waiting confusion check", {
-        atMs: Date.now(),
-        teacherState,
-        awaitingAnswerSinceMs: teacherMeta.awaitingAnswerSinceMs,
-        waitingSinceMs,
-        waitingSinceSource,
-        hasConfusionNudge: Boolean(teacherMeta.confusionNudge),
-        waitingNudgeAlreadySent: waitingNudgeSentRef.current,
-        alreadyScheduled,
-        shouldSchedule,
-      });
-    }
-
-    if (!shouldSchedule || alreadyScheduled) return;
-
-    const fireNudge = () => {
-      const observedAtMs = Date.now();
-      const currentWs = getWSCLient();
-      if (!currentWs) {
-        if (isDev) {
-          console.log("[TeachingSession] waiting confusion wsClient null", {
-            atMs: observedAtMs,
-            retrying: !waitingNudgeRetryRef.current,
-          });
-        }
-        if (!waitingNudgeRetryRef.current) {
-          waitingNudgeRetryRef.current = true;
-          waitingNudgeTimerRef.current = window.setTimeout(fireNudge, 1000);
-        } else {
-          waitingNudgeTimerRef.current = null;
-        }
-        return;
-      }
-
-      if (isDev) {
-        console.log("[TeachingSession] waiting confusion timeout fired", {
-          atMs: observedAtMs,
-          teacherState,
-          awaitingAnswerSinceMs: teacherMeta.awaitingAnswerSinceMs,
-          waitingSinceMs,
-          waitingSinceSource,
-        });
-      }
-      // mark immediately so we can't double-fire
-      waitingNudgeSentRef.current = true;
-      waitingNudgeRetryRef.current = false;
-      waitingNudgeTimerRef.current = null;
-
-      const pauseDurationMs =
-        waitingSinceMs != null ? observedAtMs - waitingSinceMs : undefined;
-      logEvent("ConfusionSignal", {
-        source: "system",
-        reason: "pause",
-        severity: "medium",
-        durationMs: pauseDurationMs,
-      });
-
-      if (isDev) {
-        console.log("[TeachingSession] waiting confusion send", {
-          atMs: observedAtMs,
-          hasWsClient: Boolean(currentWs),
-          stepIdHint: activeStepId ?? null,
-        });
-      }
-      currentWs.send({
-        type: "confusion_signal",
-        payload: {
-          source: "system",
-          reason: "pause",
-          severity: "medium",
-          text: "student_silent_after_question",
-          stepIdHint: activeStepId ?? null,
-          observedAtMs,
-        },
-      });
-    };
-
-    waitingNudgeTimerRef.current = window.setTimeout(fireNudge, 6500);
-
-    if (isDev) {
-      console.log("[TeachingSession] waiting confusion timer scheduled", {
-        atMs: Date.now(),
-        delayMs: 6500,
-      });
-    }
-  }, [teacherState, activeStepId, getWSCLient, teacherMeta.awaitingAnswerSinceMs, teacherMeta.confusionNudge, isDev]);
-
-  useEffect(() => {
     return () => {
       if (seekToastTimeoutRef.current != null) {
         window.clearTimeout(seekToastTimeoutRef.current);
@@ -432,9 +373,9 @@ export function TeachingSession() {
         window.clearTimeout(reExplainDelayTimeoutRef.current);
         reExplainDelayTimeoutRef.current = null;
       }
-      if (waitingNudgeTimerRef.current != null) {
-        window.clearTimeout(waitingNudgeTimerRef.current);
-        waitingNudgeTimerRef.current = null;
+      if (silenceHandlingDelayRef.current != null) {
+        window.clearTimeout(silenceHandlingDelayRef.current);
+        silenceHandlingDelayRef.current = null;
       }
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -510,6 +451,25 @@ export function TeachingSession() {
       clearConfusionNudge();
     }
   }, [teacherState, confusionPending, clearConfusionNudge]);
+
+  //clear only the one we saw when the state changed
+  useEffect(() => {
+    activeSilenceOfferIdRef.current = silenceNudge?.offerId ?? null;
+  }, [silenceNudge?.offerId]);
+
+  useEffect(() => {
+    if (!silenceNudge) return;
+    if (
+      teacherState === "thinking" ||
+      teacherState === "explaining" ||
+      teacherState === "re-explaining"
+    ) {
+      // only clear if we’re clearing the same offer
+      if (activeSilenceOfferIdRef.current === silenceNudge.offerId) {
+        clearSilenceNudge();
+      }
+    }
+  }, [teacherState, silenceNudge, clearSilenceNudge]);
 
   //unlock if server never responds
   // (Prevents “stuck disabled toast” on stale offer / network hiccup)
@@ -662,7 +622,10 @@ export function TeachingSession() {
     });
   };
 
-  const handleReExplain = (stepId: string, style?: "simpler" | "visual" | "example") => {
+  const handleReExplain = (
+    stepId: string,
+    style?: "simpler" | "visual" | "example",
+  ) => {
     setReExplainStepId(stepId);
     sendWithReExplainDelay(() => reExplainStep(stepId, style));
   };
@@ -720,8 +683,63 @@ export function TeachingSession() {
     clearConfusionNudge();
   };
 
+  const handleDismissSilence = () => {
+    if (!silenceNudge) return;
+
+    if (silenceHandlingDelayRef.current != null) {
+      window.clearTimeout(silenceHandlingDelayRef.current);
+      silenceHandlingDelayRef.current = null;
+    }
+
+    wsClient?.send({
+      type: "silence_nudge_dismissed",
+      payload: { offerId: silenceNudge.offerId, atMs: Date.now() },
+    });
+    clearSilenceNudge();
+  };
+
+
+  const handleSilenceAction = useCallback(
+    (choice: SilenceHelpChoice) => {
+      if (!silenceNudge) return;
+
+      const offerId = silenceNudge.offerId; // capture now
+      const atMs = Date.now();
+
+      sendWithSilenceHandlingDelay(() => {
+        wsClient?.send({
+          type: "silence_help_response",
+          payload: { offerId, choice, atMs },
+        });
+      });
+    },
+    [silenceNudge, sendWithSilenceHandlingDelay, wsClient],
+  );
+
   return (
     <>
+      {isDev && teacherState === "waiting" && (
+        <div
+          style={{
+            position: "fixed",
+            right: 12,
+            bottom: 60,
+            zIndex: 70,
+            fontSize: 11,
+            color: "#475569",
+            background: "rgba(248,250,252,0.92)",
+            border: "1px solid rgba(148,163,184,0.4)",
+            padding: "4px 8px",
+            borderRadius: 8,
+            boxShadow: "0 4px 10px rgba(15, 23, 42, 0.08)",
+          }}
+        >
+          waitingAgeMs: {waitingAgeMs ?? "n/a"} | awaitingAnswerSinceMs:{" "}
+          {teacherMeta.awaitingAnswerSinceMs ?? "n/a"} | hasSilenceNudge:{" "}
+          {hasSilenceNudge ? "yes" : "no"} | isTyping:{" "}
+          {isTyping ? "yes" : "no"}
+        </div>
+      )}
       <SessionShell
         topBar={
           <TopBar
@@ -794,9 +812,20 @@ export function TeachingSession() {
             micLevel={micLevel}
             onStartListening={onStartListening}
             onStopListening={stopListening}
+            showSilencePulse={hasSilenceNudge && !isTyping}
           />
         }
       />
+
+      {silenceNudge && (
+        <SilenceConfirmToast
+          stepIndex={silenceNudge.stepIndex}
+          onDismiss={handleDismissSilence}
+          onRepeatQuestion={() => handleSilenceAction("repeat_question")}
+          onGiveHint={() => handleSilenceAction("give_hint")}
+          onImStuck={() => handleSilenceAction("im_stuck")}
+        />
+      )}
 
       {teacherMeta.confusionNudge && (
         <ConfusionConfirmToast

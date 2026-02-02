@@ -34,6 +34,19 @@ export function liveSocketHandler(ws: WebSocket) {
         await session.handleNaturalLanguageStepSelection(msg.payload.text);
         break;
 
+      case "silence_nudge":
+        console.log("liveSocketHandler::silence_nudge", msg.payload);
+        session.handleSilenceNudge(msg.payload);
+        break;
+
+      case "silence_nudge_dismissed":
+        session.dismissSilenceNudge(msg.payload);
+        break;
+
+      case "silence_help_response":
+        await session.handleSilenceHelpResponse(msg.payload);
+        break;
+
       case "confusion_signal":
         await session.handleConfusionSignal(msg.payload);
         break;

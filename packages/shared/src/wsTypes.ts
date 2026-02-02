@@ -19,8 +19,22 @@ export type ConfusionReason =
   | "general";
 
 export type ConfusionSource = "voice" | "text" | "video" | "system";
-
 export type ConfusionSeverity = "low" | "medium" | "high";
+export type SilenceReason = "no_reply";
+export type SilenceSeverity = "low"; // keep simple for now
+export type ServerSilenceNudgeOffered = {
+  type: "silence_nudge_offered";
+  payload: {
+    offerId: string;
+    stepId: string;
+    stepIndex: number;
+    reason: SilenceReason; // "no_reply"
+    severity: SilenceSeverity; // "low"
+    atMs: number;
+  };
+};
+
+export type SilenceHelpChoice = "repeat_question" | "give_hint" | "im_stuck";
 
 export type ClientToServerMessage =
   | {
@@ -53,6 +67,28 @@ export type ClientToServerMessage =
       type: "select_step_nl"; //natural language step selection e.g Explain step two again, Go back to the simplification step, That last equation confused me
       payload: {
         text: string;
+      };
+    }
+  | {
+      type: "silence_nudge";
+      payload: {
+        stepIdHint: string | null;
+        observedAtMs: number;
+      };
+    }
+  | {
+      type: "silence_nudge_dismissed";
+      payload: {
+        offerId: string;
+        atMs: number;
+      };
+    }
+  | {
+      type: "silence_help_response";
+      payload: {
+        offerId: string;
+        choice: SilenceHelpChoice;
+        atMs: number;
       };
     }
   | {
@@ -95,6 +131,17 @@ export type ClientToServerMessage =
 
 export type ServerToClientMessage =
   | TeacherSignal
+  | {
+      type: "silence_nudge_offered";
+      payload: {
+        offerId: string;
+        stepId: string;
+        stepIndex: number;
+        reason: "no_reply";
+        severity: "low";
+        atMs: number;
+      };
+    }
   | {
       type: "confusion_nudge_offered";
       payload: {

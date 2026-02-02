@@ -8,6 +8,7 @@ import {
   ConfusionSeverity,
   ConfusionSource,
   ClientToServerMessage,
+  SilenceHelpChoice,
 } from "@shared/types";
 import { GeminiLiveAudioClient } from "./GeminiLiveAudioClient.js";
 import { StreamingStepExtractor } from "../StreamingStepExtractor.js";
@@ -43,22 +44,29 @@ type PendingConfusionOffer = {
   payload: ConfusionSignalPayload;
 };
 
-//TODO... 
-//This is not used currently, but will be useful for future features.
-function pickReexplainStyle(
-  reason: ConfusionReason,
-  severity: ConfusionSeverity,
-) {
-  // Map confusion -> explanation style
-  if (reason === "wrong_answer") return "example" as const;
-  if (reason === "repeat_request") return "simpler" as const;
+type PendingSilenceOffer = {
+  offerId: string;
+  stepId: string;
+  stepIndex: number;
+  offeredAtMs: number;
+};
 
-  // pause/hesitation: prioritize slower + step-by-step language (we’ll do that in the prompt)
-  if (reason === "pause" || reason === "hesitation") return "simpler" as const;
-
-  // general confusion
-  return severity === "high" ? ("visual" as const) : ("simpler" as const);
+//TODO... move to utils file
+function enforceQuestion(text: string): string {
+  let t = (text ?? "").trim();
+  if (!t) return "Can you answer the last question?";
+  // keep first line only (prevents multi-sentence)
+  t = t.split("\n")[0].trim();
+  // ensure single sentence-ish
+  t = t.replace(/[.!]+$/, "").trim();
+  if (!t.endsWith("?")) t = `${t}?`;
+  // cap length (words)
+  const words = t.split(/\s+/);
+  if (words.length > 12)
+    t = words.slice(0, 12).join(" ").replace(/[?]*$/, "") + "?";
+  return t;
 }
+
 
 export class GeminiLiveSession {
   private streamingClient: GeminiStreamingClient;
@@ -86,6 +94,11 @@ export class GeminiLiveSession {
 
   private nudgeCooldownByStepId = new Map<string, number>();
   private lastInterruptAtMs: number | null = null;
+  private pendingSilenceOffer: PendingSilenceOffer | null = null;
+
+  private static readonly SILENCE_OFFER_TTL_MS = 20_000;
+  private static readonly SILENCE_STEP_COOLDOWN_MS = 18_000;
+  private silenceCooldownByStepId = new Map<string, number>();
 
   // Tunables
   private static readonly PENDING_OFFER_TTL_MS = 12_000; // offer expires if not acted on
@@ -154,14 +167,18 @@ export class GeminiLiveSession {
         const atMs = Date.now();
         if (isDev) {
           const sinceInterruptMs =
-            this.lastInterruptAtMs != null ? atMs - this.lastInterruptAtMs : null;
+            this.lastInterruptAtMs != null
+              ? atMs - this.lastInterruptAtMs
+              : null;
           console.log("GeminiLiveSession::audio_status", {
             status,
             reason,
             atMs,
             sinceInterruptMs,
             fromInterrupt:
-              sinceInterruptMs != null && sinceInterruptMs >= 0 && sinceInterruptMs < 2000,
+              sinceInterruptMs != null &&
+              sinceInterruptMs >= 0 &&
+              sinceInterruptMs < 2000,
           });
         }
         this.send({
@@ -202,11 +219,14 @@ export class GeminiLiveSession {
       this.pendingOffer = null;
 
       if (isDev) {
-        console.log("GeminiLiveSession::handleUserMessage interrupt invoked for user_message", {
-          atMs: Date.now(),
-          teacherState: this.teacherState,
-          audioClientRunning: this.audioClient.isRunning(),
-        });
+        console.log(
+          "GeminiLiveSession::handleUserMessage interrupt invoked for user_message",
+          {
+            atMs: Date.now(),
+            teacherState: this.teacherState,
+            audioClientRunning: this.audioClient.isRunning(),
+          },
+        );
       }
       this.interruptGenerationOnly();
       this.setState("thinking", { type: "teacher_thinking" });
@@ -453,6 +473,277 @@ export class GeminiLiveSession {
       .join("\n")
       .replace(/=/g, "") // last resort: remove stray equals
       .trim();
+  }
+
+  private pruneSilenceCooldowns(now: number) {
+    for (const [k, until] of this.silenceCooldownByStepId) {
+      if (until <= now) this.silenceCooldownByStepId.delete(k);
+    }
+  }
+
+  private clearExpiredSilenceOffer(now: number) {
+    if (!this.pendingSilenceOffer) return;
+    const age = now - this.pendingSilenceOffer.offeredAtMs;
+    if (age > GeminiLiveSession.SILENCE_OFFER_TTL_MS) {
+      this.pendingSilenceOffer = null;
+    }
+  }
+
+  handleSilenceNudge(payload: {
+    stepIdHint: string | null;
+    observedAtMs: number;
+  }) {
+    console.log("GeminiLiveSession::handleSilenceNudge", payload);
+    try {
+      const now = Date.now();
+      this.pruneSilenceCooldowns(now);
+      this.clearExpiredSilenceOffer(now);
+
+      // If there's already an active silence offer, don't create another
+      if (this.pendingSilenceOffer) {
+        if (isDev) {
+          console.log("GeminiLiveSession::handleSilenceNudge skip (pending offer)", {
+            offerId: this.pendingSilenceOffer.offerId,
+            stepId: this.pendingSilenceOffer.stepId,
+          });
+        }
+        return;
+      }
+
+      const steps = this.stepExtractor.getSteps();
+
+      const step =
+        (payload.stepIdHint
+          ? steps.find((s) => s.id === payload.stepIdHint)
+          : null) ??
+        (this.currentSpokenStepId
+          ? steps.find((s) => s.id === this.currentSpokenStepId)
+          : null);
+
+      if (!step) {
+        if (isDev) {
+          console.log("GeminiLiveSession::handleSilenceNudge no step resolved", {
+            stepIdHint: payload.stepIdHint,
+            currentSpokenStepId: this.currentSpokenStepId,
+          });
+        }
+        return;
+      }
+
+      if (isDev) {
+        console.log("GeminiLiveSession::handleSilenceNudge resolved step", {
+          stepId: step.id,
+          stepIndex: step.index,
+        });
+      }
+
+      const cooldownUntil = this.silenceCooldownByStepId.get(step.id) ?? 0;
+      if (now < cooldownUntil) {
+        if (isDev) {
+          console.log("GeminiLiveSession::handleSilenceNudge skip (cooldown)", {
+            stepId: step.id,
+            cooldownUntil,
+            now,
+          });
+        }
+        return;
+      }
+
+      const offerId = randomUUID();
+
+      this.pendingSilenceOffer = {
+        offerId,
+        stepId: step.id,
+        stepIndex: step.index,
+        offeredAtMs: now,
+      };
+
+      // Offer only. No interrupt, no speech.
+      this.send({
+        type: "silence_nudge_offered",
+        payload: {
+          offerId,
+          stepId: step.id,
+          stepIndex: step.index,
+          reason: "no_reply",
+          severity: "low",
+          atMs: now,
+        },
+      });
+      if (isDev) {
+        console.log("GeminiLiveSession::silence_nudge_offered sent", {
+          offerId,
+          stepId: step.id,
+          stepIndex: step.index,
+        });
+      }
+    } catch (err) {
+      console.error("Error in handleSilenceNudge:", err);
+    }
+  }
+
+  dismissSilenceNudge(payload: { offerId: string; atMs: number }) {
+    const offer = this.pendingSilenceOffer;
+    if (!offer) return;
+    if (offer.offerId !== payload.offerId) return;
+
+    this.pendingSilenceOffer = null;
+    this.silenceCooldownByStepId.set(
+      offer.stepId,
+      Date.now() + GeminiLiveSession.SILENCE_STEP_COOLDOWN_MS,
+    );
+  }
+
+  async handleSilenceHelpResponse(payload: {
+    offerId: string;
+    choice: SilenceHelpChoice;
+    atMs: number;
+  }) {
+    const offer = this.pendingSilenceOffer;
+    if (!offer) return;
+    if (offer.offerId !== payload.offerId) return;
+
+    const now = Date.now();
+    const age = now - offer.offeredAtMs;
+    if (age > GeminiLiveSession.SILENCE_OFFER_TTL_MS) {
+      this.pendingSilenceOffer = null;
+      return;
+    }
+
+    // consume the offer
+    this.pendingSilenceOffer = null;
+
+    const steps = this.stepExtractor.getSteps();
+    const step = steps.find((s) => s.id === offer.stepId) ?? null;
+
+    // "repeat_question" is intentionally light-touch (doesn't assume confusion)
+    if (payload.choice === "repeat_question") {
+      this.interruptGenerationOnly();
+      this.setState("re-explaining", {
+        type: "teacher_reexplaining",
+        stepIndex: offer.stepIndex,
+      });
+
+      await this.microPauseBeforeReexplain();
+
+      const prompt = `
+      You are a real-time math tutor.
+
+      The student did not reply to your last question.
+
+      Task:
+      - Ask ONE short question only (max 12 words).
+      - It MUST end with a question mark.
+      - Do NOT explain.
+      - Do NOT solve.
+      - Do NOT add new steps.
+      - After asking the question, output nothing else.
+
+      Context (do not quote it verbatim unless needed):
+      ${step?.text ?? "(unknown)"}
+      `.trim();
+
+      const out = await this.streamFreeform(prompt);
+      const q = enforceQuestion(out);
+      if (q !== out) {
+        // say the corrected question (optional: interrupt first)
+        this.interruptGenerationOnly();
+        await this.streamFreeform(q);
+      }
+    }
+
+    if (payload.choice === "im_stuck") {
+      this.interruptGenerationOnly();
+
+      // force it into adaptive re-explain immediately
+      await this.handleConfusionSignal({
+        source: "system",
+        reason: "general", // because student explicitly confirmed
+        severity: "medium",
+        text: "Student said they're stuck after silence nudge.",
+        stepIdHint: offer.stepId,
+        observedAtMs: payload.atMs,
+      });
+
+      return;
+    }
+
+    // "give_hint" is still not "confusion"; it’s a gentle nudge hint
+    this.interruptGenerationOnly();
+
+    const prompt = `
+    You are a real-time math tutor.
+
+    The student is silent after a question.
+    Give a tiny hint that helps them respond, without re-explaining the whole step.
+    Keep it to 1-2 sentences.
+
+    Current step:
+    ${step?.text ?? "(unknown)"}
+    `.trim();
+
+    await this.streamExplanation(prompt, { audioMode: "freeform" });
+  }
+
+  private async streamFreeform(prompt: string): Promise<string> {
+    this.abortController = new AbortController();
+    this.aborted = false;
+    this.isSpeaking = true;
+
+    const stream = await this.streamingClient.streamText(prompt, {
+      signal: this.abortController.signal,
+    });
+
+    let final = "";
+    let started = false;
+
+    try {
+      for await (const chunk of stream) {
+        if (this.aborted || !chunk.text) break;
+
+        if (!started) {
+          started = true;
+          this.setState("explaining", {
+            type: "teacher_explaining",
+            stepIndex: this.resumeContext.lastCompletedStep?.index,
+          });
+          this.resumeContext.fullExplanationSoFar += "\n\n[Teacher]: ";
+        }
+
+        final += chunk.text;
+        this.resumeContext.fullExplanationSoFar += chunk.text;
+
+        this.send({
+          type: "ai_message_chunk",
+          payload: { textDelta: chunk.text, isFinal: false },
+        });
+      }
+    } finally {
+      this.isSpeaking = false;
+
+      this.send({
+        type: "ai_message_chunk",
+        payload: { textDelta: "", isFinal: true },
+      });
+      this.send({
+        type: "ai_message",
+        payload: { text: this.resumeContext.fullExplanationSoFar },
+      });
+
+      const spoken = final.trim();
+      if (!this.aborted && spoken) {
+        await this.audioClient.speakFreeform(spoken);
+      }
+
+      if (!this.aborted) {
+        this.setState("waiting", {
+          type: "teacher_waiting",
+          awaitingAnswerSinceMs: Date.now(),
+        });
+      }
+    }
+
+    return final.trim();
   }
 
   async handleConfusionSignal(payload: ConfusionSignalPayload) {

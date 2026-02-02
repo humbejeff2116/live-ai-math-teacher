@@ -10,6 +10,7 @@ type InputBarProps = {
   onStartListening: () => void;
   onStopListening: () => void;
   isUserSpeaking: boolean;
+  showSilencePulse?: boolean;
 };
 
 export function InputBar({
@@ -21,6 +22,7 @@ export function InputBar({
   onSend,
   onStartListening,
   onStopListening,
+  showSilencePulse = false,
 }: InputBarProps) {
   const canSend = input.trim().length > 0;
 
@@ -45,6 +47,27 @@ export function InputBar({
         aria-label={micLabel}
         title={micLabel}
       >
+        {/* Silence nudge pulse ring (only when not listening) */}
+        {showSilencePulse && !isListening && (
+          <>
+            {/* soft outer ping */}
+            <span
+              className="pointer-events-none absolute inset-0 rounded-md animate-ping"
+              style={{
+                boxShadow: "0 0 0 2px rgba(16,185,129,0.35)", // emerald-ish
+              }}
+              aria-hidden
+            />
+            {/* steady faint ring to anchor the ping */}
+            <span
+              className="pointer-events-none absolute inset-0 rounded-md"
+              style={{
+                boxShadow: "0 0 0 2px rgba(16,185,129,0.18)",
+              }}
+              aria-hidden
+            />
+          </>
+        )}
         {isListening ? <MicOff /> : <Mic />}
 
         {/* Speaking indicator ring */}

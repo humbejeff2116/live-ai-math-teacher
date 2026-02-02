@@ -47,6 +47,7 @@ export function useLiveSession() {
     resetDebugForNewProblem,
     maybeStartNewProblemFromStudentText,
     clearConfusionNudge,
+    clearSilenceNudge,
     reexplainStepId,
   } = useHandleMessage(
     stepTimelineRef,
@@ -231,6 +232,7 @@ export function useLiveSession() {
     liveAudio,
     lastAudioChunkAtMs,
     clearConfusionNudge,
+    clearSilenceNudge,
   };
 }
 
@@ -284,6 +286,7 @@ export function useHandleMessage(
     markTeacherUtteranceFinal,
     resetTeacher,
     clearConfusionNudge,
+    clearSilenceNudge,
   } = useTeacherState();
 
   const setProblemId = useCallback(
@@ -568,9 +571,10 @@ export function useHandleMessage(
           setStreamingText(bufferRef.current);
         } else {
           // finalize
-          const finalText = bufferRef.current;
+          const finalText = bufferRef.current.trim();
           bufferRef.current = "";
           setStreamingText("");
+          if (!finalText) return;
           const createdAtMs = Date.now();
           markTeacherUtteranceFinal(finalText, createdAtMs);
           setChat((prev) => [
@@ -596,19 +600,7 @@ export function useHandleMessage(
         // speak(message.payload.text);
       }
     },
-    [
-      dispatchTeacher,
-      setDebugState,
-      sendTimeRef,
-      stepTimelineRef,
-      lastStepIndexRef,
-      DEBUG_EQUATION_STEPS,
-      interruptTTS,
-      playChunk,
-      markTeacherUtteranceFinal,
-      resolveStepIdFromIndex,
-      resolveStepTags,
-    ],
+    [isDev, dispatchTeacher, setDebugState, sendTimeRef, resolveStepIdFromIndex, resolveStepTags, stepTimelineRef, lastStepIndexRef, DEBUG_EQUATION_STEPS, interruptTTS, playChunk, markTeacherUtteranceFinal],
   );
 
   //Your step status timer
@@ -653,6 +645,7 @@ export function useHandleMessage(
     resetDebugForNewProblem,
     maybeStartNewProblemFromStudentText,
     clearConfusionNudge,
+    clearSilenceNudge,
     reexplainStepId,
   };
 }
