@@ -1,4 +1,12 @@
-export type AudioPlaybackState = "idle" | "playing" | "interrupted";
+export type AudioPlaybackState =
+  | "idle"
+  | "buffering"
+  | "ready"
+  | "playing"
+  | "paused"
+  | "ended"
+  | "error"
+  | "interrupted";
 
 export type WaveformPoint = {
   t: number; // performance.now()

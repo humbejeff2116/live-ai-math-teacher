@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useMemo, useRef, useState } from "react";
 import type { WaveformPoint } from "../audio/audioTypes";
 import type { StepAudioRange } from "@shared/types";
 import { useOneShotHint } from "../hooks/useOneShotHint";
@@ -33,8 +33,10 @@ export function Waveform({
   onSeekRequest,
 }: Props) {
   const [isDragging, setIsDragging] = useState(false);
+  const isDraggingRef = useRef(false);
   const { visible: showScrubHint, showOnce: showScrubHintOnce } =
     useOneShotHint("waveformScrubHintSeen", 4500);
+  const MIN_BAR_PCT = 3;
   const SNAP_THRESHOLD_SEC = 0.25;
   const animatedRange = useMemo(() => {
     if (!animatedStepId) return null;
@@ -95,7 +97,9 @@ export function Waveform({
     if (!nearest || nearestDelta > SNAP_THRESHOLD_SEC) return null;
     return nearest;
   };
+
   const nearestBoundary = getNearestStepBoundary(previewTimeSec);
+
   const hoverText = nearestBoundary
     ? `Jump to Step ${nearestBoundary.stepIndex ?? "?"}?`
     : hoverLabel && hoverPercent != null
@@ -112,7 +116,9 @@ export function Waveform({
       const pct = Math.min(100, Math.max(0, (range.startMs / durationMs) * 100));
       unique.add(Math.round(pct * 100) / 100);
     }
+
     const sorted = Array.from(unique).sort((a, b) => a - b);
+
     if (sorted.length > 200) {
       const step = Math.ceil(sorted.length / 200);
       return sorted.filter((_, idx) => idx % step === 0);
@@ -120,10 +126,17 @@ export function Waveform({
     return sorted;
   }, [durationMs, stepRanges]);
 
+  const getMsFromClientX = (clientX: number, rect: DOMRect) => {
+    const ratio = (clientX - rect.left) / rect.width;
+    const clampedRatio = Math.min(1, Math.max(0, ratio));
+    return Math.min(durationMs, Math.max(0, clampedRatio * durationMs));
+  };
+
   return (
     <div
       style={{
-        height: 80, // Increased slightly for better visibility
+        height: 80,
+        width: "100%",
         position: "relative",
         display: "flex",
         alignItems: "flex-end",
@@ -133,34 +146,67 @@ export function Waveform({
         borderRadius: "8px",
         padding: "8px",
         overflow: "hidden",
+
+        // makes pointer gestures reliable (esp. on touchpads/touch)
+        touchAction: "none",
+
+        // force interactivity even if some parent has odd styles
+        pointerEvents: "auto",
       }}
-      onMouseLeave={() => {
+      onPointerLeave={() => {
+        isDraggingRef.current = false;
         onHoverTime?.(null);
         setIsDragging(false);
       }}
-      onMouseMove={(e) => {
+      onPointerMove={(e) => {
         showScrubHintOnce();
         const rect = e.currentTarget.getBoundingClientRect();
-        const ratio = (e.clientX - rect.left) / rect.width;
-        const clampedRatio = Math.min(1, Math.max(0, ratio));
-        onHoverTime?.(Math.min(durationMs, Math.max(0, clampedRatio * durationMs)));
+        const ms = getMsFromClientX(e.clientX, rect);
+        onHoverTime?.(ms);
       }}
-      onMouseDown={() => {
+      onPointerDown={(e) => {
         showScrubHintOnce();
+        isDraggingRef.current = true;
         setIsDragging(true);
-      }}
-      onMouseUp={() => setIsDragging(false)}
-      onClick={(e) => {
+
+        // capture so drag keeps working even if pointer crosses child bars
+        e.currentTarget.setPointerCapture(e.pointerId);
+
         const rect = e.currentTarget.getBoundingClientRect();
-        const ratio = (e.clientX - rect.left) / rect.width;
-        const seekMs = Math.min(durationMs, Math.max(0, ratio * durationMs));
+        const ms = getMsFromClientX(e.clientX, rect);
+        onHoverTime?.(ms);
+      }}
+      onPointerUp={(e) => {
+        if (!isDraggingRef.current) return;
+        isDraggingRef.current = false;
+        setIsDragging(false);
+
+        const rect = e.currentTarget.getBoundingClientRect();
+        const ms = getMsFromClientX(e.clientX, rect);
+
+        // “release to jump”
         onSeekRequest?.({
-          ms: seekMs,
+          ms,
           clientX: e.clientX,
           clientY: e.clientY,
         });
+
+        // optional: keep hover line after seek
+        onHoverTime?.(ms);
+
+        try {
+          e.currentTarget.releasePointerCapture(e.pointerId);
+        } catch {
+          // ignore
+        }
+      }}
+      onPointerCancel={() => {
+        isDraggingRef.current = false;
+        setIsDragging(false);
+        onHoverTime?.(null);
       }}
     >
+
       <style>
         {`@keyframes magneticHint {
           0% { transform: translateX(-50%) scaleX(1); opacity: 0.7; }
@@ -180,7 +226,7 @@ export function Waveform({
             background: "rgba(99, 102, 241, 0.10)",
             boxShadow: "0 0 0 1px rgba(99, 102, 241, 0.25) inset",
             pointerEvents: "none",
-            overflow: "hidden", // ✅ required for shimmer clipping
+            overflow: "hidden", // required for shimmer clipping
             animation: "pulseGlow 1.2s ease-in-out infinite",
             zIndex: 2,
           }}
@@ -302,8 +348,10 @@ export function Waveform({
       />
 
       {waveform.map((p, i) => {
-        const timeAtBar = (i / waveform.length) * durationMs;
+        const timeAtBar = waveform[i]?.t ?? (i / waveform.length) * durationMs;
         const isPlayed = timeAtBar <= currentTimeMs;
+        const hPct = Math.max(MIN_BAR_PCT, p.amp * 100);
+
 
         const activeRange = stepRanges.find(
           (r) => timeAtBar >= r.startMs && timeAtBar < (r.endMs ?? Infinity)
@@ -314,15 +362,17 @@ export function Waveform({
             key={i}
             style={{
               flex: 1,
-              height: `${p.amp * 100}%`,
+              height: `${hPct}%`,
+              minWidth: 2, // Prevent flexbox from squashing it below 4px
               background: activeRange ? "#6366f1" : "#4ade80",
-              opacity: isPlayed ? 1 : 0.3,
+              opacity: isPlayed ? 1 : 0.6,
               borderRadius: "1px",
               transition: "opacity 0.2s ease",
               position: "relative",
               zIndex: 3,
             }}
-          />
+          >
+          </div>
         );
       })}
     </div>

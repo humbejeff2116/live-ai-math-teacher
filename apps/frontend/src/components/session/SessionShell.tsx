@@ -27,7 +27,7 @@ export function SessionShell({
 
       {audioStrip && (
         <div className="border-b border-slate-200 bg-white">
-          <div className="mx-auto w-full max-w-6xl px-4 py-3">{audioStrip}</div>
+          <div className="mx-[auto] w-full max-w-6xl px-4 py-3">{audioStrip}</div>
         </div>
       )}
 

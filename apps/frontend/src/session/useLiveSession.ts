@@ -33,6 +33,8 @@ export function useLiveSession() {
     streamingText,
     equationSteps,
     currentProblemId,
+    lastProblemChangeReason,
+    lastProblemChangeAtMs,
     teacherState,
     teacherMeta,
     resetTeacher,
@@ -56,7 +58,8 @@ export function useLiveSession() {
     liveAudio.playChunk,
   );
 
-  const { setPlaybackRate } = liveAudio;
+  const { setPlaybackRate, reset: resetLiveAudio } = liveAudio;
+  const isDev = import.meta.env.MODE !== "production";
 
   
 
@@ -99,6 +102,27 @@ export function useLiveSession() {
     setPlaybackRate(targetRate);
   }, [setPlaybackRate, teacherState, equationSteps, reexplainStepId]);
 
+  useEffect(() => {
+    if (lastProblemChangeReason !== "manual_start_new_problem") return;
+    // Only reset audio/timeline for explicit manual starts; server-driven or
+    // auto-detected problem changes must not clear the waveform UX.
+    if (isDev) {
+      console.warn(
+        "[liveAudio.reset][manual_start_new_problem]",
+        { currentProblemId, lastProblemChangeReason, lastProblemChangeAtMs },
+        new Error().stack,
+      );
+    }
+    resetLiveAudio();
+    stepTimelineRef.current.reset();
+  }, [
+    currentProblemId,
+    isDev,
+    lastProblemChangeAtMs,
+    lastProblemChangeReason,
+    resetLiveAudio,
+  ]);
+
   // 3. Cleanup logic: Stop audio/timers when the hook unmounts
   useEffect(() => {
     const timeline = stepTimelineRef.current;
@@ -108,6 +132,7 @@ export function useLiveSession() {
       console.log("Live session cleaned up.");
     };
   }, []);
+  
 
     const startNewProblem = useCallback(() => {
       setProblemId(currentProblemIdRef.current + 1, "manual_start_new_problem");
@@ -122,7 +147,14 @@ export function useLiveSession() {
       wsClientRef.current?.send({
         type: "reset_session", // You'll need to handle this type on the server
       });
-    }, [currentProblemIdRef, resetDebugForNewProblem, setChat, setEquationSteps, setProblemId, wsClientRef]);
+    }, [
+      currentProblemIdRef,
+      resetDebugForNewProblem,
+      setChat,
+      setEquationSteps,
+      setProblemId,
+      wsClientRef,
+    ]);
   
 
   function sendUserMessage(text: string) {
@@ -236,6 +268,11 @@ export function useLiveSession() {
   };
 }
 
+export type ProblemChangeReason =
+  | "manual_start_new_problem"
+  | "auto_detect"
+  | "unknown";
+
 export type AudioStepStatus = "pending" | "buffering" | "ready";
 const AUDIO_READY: AudioStepStatus = "ready" as const;
 const AUDIO_PENDING: AudioStepStatus = "pending" as const;
@@ -270,6 +307,11 @@ export function useHandleMessage(
   const [streamingText, setStreamingText] = useState("");
   const [aiLifecycleTick, setAiLifecycleTick] = useState(0);
   const [currentProblemId, setCurrentProblemId] = useState(0);
+  const [lastProblemChangeReason, setLastProblemChangeReason] =
+    useState<ProblemChangeReason | null>(null);
+  const [lastProblemChangeAtMs, setLastProblemChangeAtMs] = useState<
+    number | null
+  >(null);
   const [reexplainStepId, setReexplainStepId] = useState<string | null>(null);
   const [lastAudioChunkAtMs, setLastAudioChunkAtMs] = useState<number | null>(
     null,
@@ -290,14 +332,24 @@ export function useHandleMessage(
   } = useTeacherState();
 
   const setProblemId = useCallback(
-    (nextId: number, reason: string) => {
+    (nextId: number, reason: ProblemChangeReason) => {
+      const atMs = Date.now();
       currentProblemIdRef.current = nextId;
       setCurrentProblemId(nextId);
+      setLastProblemChangeReason(reason);
+      setLastProblemChangeAtMs(atMs);
       if (DEBUG_EQUATION_STEPS) {
         console.log("[problem_id]", { nextId, reason });
       }
+      if (isDev) {
+        console.warn(
+          "[problem_id.change]",
+          { nextId, reason, atMs },
+          new Error().stack,
+        );
+      }
     },
-    [DEBUG_EQUATION_STEPS, setCurrentProblemId],
+    [DEBUG_EQUATION_STEPS, isDev, setCurrentProblemId],
   );
 
   const appendStudentMessage = useCallback((text: string) => {
@@ -459,13 +511,11 @@ export function useHandleMessage(
       // but don't rely on them for active step.
       //they can create overlapping ranges if mixed.
       if (message.type === "step_audio_start") {
-        stepTimelineRef.current.onStepStart(
-          message.payload.stepId,
-          message.payload.atMs,
-        );
-        const stepIndex = stepIndexByIdRef.current.get(
-          message.payload.stepId,
-        );
+        // IMPORTANT: use audio-relative timeline time, not wall-clock Date.now()
+        const tMs = stepTimelineRef.current.getTotalDurationMs();
+        stepTimelineRef.current.onStepStart(message.payload.stepId, tMs);
+
+        const stepIndex = stepIndexByIdRef.current.get(message.payload.stepId);
         logEvent("StepStarted", {
           step: stepIndex != null ? stepIndex + 1 : undefined,
           stepId: message.payload.stepId,
@@ -473,11 +523,10 @@ export function useHandleMessage(
       }
 
       if (message.type === "step_audio_end") {
-        stepTimelineRef.current.onStepEnd(
-          message.payload.stepId,
-          message.payload.atMs,
-        );
+        const tMs = stepTimelineRef.current.getTotalDurationMs();
+        stepTimelineRef.current.onStepEnd(message.payload.stepId, tMs);
       }
+
 
       if (message.type === "ai_resumed") {
         setStreamingText("");
@@ -631,6 +680,8 @@ export function useHandleMessage(
     streamingText,
     equationSteps,
     currentProblemId,
+    lastProblemChangeReason,
+    lastProblemChangeAtMs,
     currentProblemIdRef,
     setProblemId,
     setChat,

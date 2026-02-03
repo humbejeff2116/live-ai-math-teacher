@@ -94,7 +94,14 @@ export function TeachingSession() {
     waveform, 
     currentTimeMs, 
     seekWithFadeMs, 
-    unlockAudio 
+    unlockAudio,
+    play,
+    pause,
+    resume,
+    replay,
+    autoplayExplanations,
+    setAutoplayExplanations,
+    bufferedDurationMs,
   } = liveAudio;
 
   const wsClient = getWSCLient();
@@ -234,15 +241,60 @@ export function TeachingSession() {
     expectsAudio &&
     (lastAudioChunkAtMs == null || nowMs - lastAudioChunkAtMs > 1500);
 
-    const lastVisibleStepId =
-      visibleSteps.length > 0
-        ? visibleSteps[visibleSteps.length - 1]!.id
-        : null;
+  const showAudioStrip =
+    expectsAudio ||
+    waveform.length > 0 ||
+    ["buffering", "ready", "playing", "paused", "ended"].includes(audioState);
 
-    const silenceStepIdHint = activeStepId ?? lastVisibleStepId ?? null;
+  const audioStatusLabel =
+    audioState === "buffering"
+      ? "Buffering\u2026"
+      : audioState === "ready"
+      ? "Ready"
+      : audioState === "playing"
+      ? "Playing"
+      : audioState === "paused"
+      ? "Paused"
+      : audioState === "ended"
+      ? "Ended"
+      : "Idle";
+
+  const showPlayButton = ["buffering", "ready", "paused", "ended"].includes(
+    audioState,
+  );
+  const showPauseButton = audioState === "playing";
+  const showReplayButton = ["ended", "paused", "ready"].includes(audioState);
+  const waveformDurationMs = Math.max(
+    stepTimeline?.getTotalDurationMs() ?? 0,
+    bufferedDurationMs ?? 0,
+  );
+
+
+  const lastVisibleStepId =
+    visibleSteps.length > 0
+      ? visibleSteps[visibleSteps.length - 1]!.id
+      : null;
+
+  const silenceStepIdHint = activeStepId ?? lastVisibleStepId ?? null;
+
+  const silenceNudgeEnabled =
+    (teacherState === "waiting" &&
+      audioState !== "playing" &&
+      audioState === "idle") 
+      
+      ||
+    (audioState === "ended" &&
+      !isUserSpeaking &&
+      !confusionPending &&
+      !showCooldownHint &&
+      !hasSilenceNudge &&
+      waitingAgeMs != null &&
+      waitingAgeMs > 7000 &&
+      (silenceNudge == null ||
+        (silenceNudge && nowMs - silenceNudge.atMs > 15000))); // at least 15s since last offer
 
   useSilenceNudgeScheduler({
-    enabled: teacherState === "waiting",
+    enabled: silenceNudgeEnabled,
     awaitingAnswerSinceMs: teacherMeta.awaitingAnswerSinceMs,
     hasSilenceNudge,
     isTyping,
@@ -273,10 +325,20 @@ export function TeachingSession() {
   useEffect(() => {
     if (lastAudioStateRef.current === audioState) return;
     if (audioState === "playing") logEvent("AudioPlay");
-    if (audioState === "idle") logEvent("AudioPause");
+    if (audioState === "paused" || audioState === "ended")
+      logEvent("AudioPause");
     if (audioState === "interrupted") logEvent("AudioInterrupted");
     lastAudioStateRef.current = audioState;
   }, [audioState]);
+
+  useEffect(() => {
+    if (!isDev) return;
+    console.warn(
+      "[TeachSession.waveform.length]",
+      { length: waveform.length, audioState, currentProblemId },
+      new Error().stack,
+    );
+  }, [audioState, currentProblemId, isDev, waveform.length]);
 
   const isStepRecentlyConfused = useCallback((stepId: string) => {
     const lastConfusedAt = stepConfusedAtRef.current.get(stepId);
@@ -483,6 +545,17 @@ export function TeachingSession() {
 
     return () => window.clearTimeout(t);
   }, [confusionPending]);
+
+
+  useEffect(() => {
+    console.log("[Waveform]", {
+      audioState,
+      waveformLen: waveform.length,
+      bufferedDurationMs,
+      waveformDurationMs,
+    });
+  }, [audioState, waveform.length, bufferedDurationMs, waveformDurationMs]);
+
 
   const handleSend = async () => {
     if (isDev) {
@@ -754,17 +827,60 @@ export function TeachingSession() {
           />
         }
         audioStrip={
-          audioState === "playing" ? (
+          showAudioStrip ? (
             <div className="flex flex-col gap-2">
-              <div className="text-xs font-semibold uppercase tracking-wide text-slate-500">
-                Teacher is speaking
+              <div className="flex flex-wrap items-center justify-between gap-2 text-xs font-semibold uppercase tracking-wide text-slate-500">
+                <span>Teacher audio</span>
+                {autoplayExplanations && (
+                  <span className="rounded-full border border-emerald-200 bg-emerald-50 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-emerald-600">
+                    Autoplay is on
+                  </span>
+                )}
+              </div>
+              <div className="flex flex-wrap items-center gap-2 text-xs">
+                <span className="rounded-full border border-slate-200 bg-slate-50 px-2 py-1 font-semibold text-slate-600">
+                  {audioStatusLabel}
+                </span>
+                {showPlayButton && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      if (audioState === "paused") {
+                        resume();
+                      } else {
+                        play();
+                      }
+                    }}
+                    className="rounded-md border border-slate-200 bg-white px-2 py-1 font-semibold text-slate-600 transition hover:bg-slate-50"
+                  >
+                    Play
+                  </button>
+                )}
+                {showPauseButton && (
+                  <button
+                    type="button"
+                    onClick={() => pause()}
+                    className="rounded-md border border-slate-200 bg-white px-2 py-1 font-semibold text-slate-600 transition hover:bg-slate-50"
+                  >
+                    Pause
+                  </button>
+                )}
+                {showReplayButton && (
+                  <button
+                    type="button"
+                    onClick={() => replay()}
+                    className="rounded-md border border-slate-200 bg-white px-2 py-1 font-semibold text-slate-600 transition hover:bg-slate-50"
+                  >
+                    Replay
+                  </button>
+                )}
               </div>
               <div className="rounded-lg border border-slate-200 bg-white px-3 py-2 shadow-sm">
                 <Waveform
                   waveform={waveform}
                   stepRanges={stepTimeline?.getRanges() || []}
                   stepIndexById={stepIndexById}
-                  durationMs={stepTimeline?.getTotalDurationMs() || 0}
+                  durationMs={waveformDurationMs}
                   currentTimeMs={currentTimeMs}
                   animatedStepId={animatedStepId}
                   hoverLabel={hoverLabel}
@@ -801,7 +917,12 @@ export function TeachingSession() {
             status={connectionStatus}
           />
         }
-        quickSettings={<QuickSettings />}
+        quickSettings={
+          <QuickSettings
+            autoplay={autoplayExplanations}
+            onToggleAutoplay={setAutoplayExplanations}
+          />
+        }
         inputBar={
           <InputBar
             input={input}

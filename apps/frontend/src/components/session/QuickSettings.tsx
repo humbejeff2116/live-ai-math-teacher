@@ -11,6 +11,11 @@ import {
 
 const STORAGE_KEY = "quickSettingsOpen";
 
+type QuickSettingsProps = {
+  autoplay?: boolean;
+  onToggleAutoplay?: (enabled: boolean) => void;
+};
+
 type NudgeStyleSnapshot = {
   label: string;
   confidence: number;
@@ -40,7 +45,10 @@ const deriveNudgeStyle = (
   return { label: "standard", confidence: 0.5, dismissRate };
 };
 
-export function QuickSettings() {
+export function QuickSettings({
+  autoplay = false,
+  onToggleAutoplay,
+}: QuickSettingsProps) {
   const [open, setOpen] = useState(() => {
     if (typeof window === "undefined") return true;
     const value = window.localStorage.getItem(STORAGE_KEY);
@@ -214,6 +222,27 @@ export function QuickSettings() {
               <span className="absolute left-1 h-4 w-4 rounded-full bg-white transition peer-checked:translate-x-5" />
             </span>
           </label>
+
+          <div className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-3">
+            <label className="flex items-center justify-between text-xs font-semibold text-slate-700">
+              Autoplay explanations
+              <span className="relative inline-flex items-center">
+                <input
+                  type="checkbox"
+                  checked={autoplay}
+                  onChange={(event) =>
+                    onToggleAutoplay?.(event.target.checked)
+                  }
+                  className="peer sr-only"
+                />
+                <span className="h-6 w-11 rounded-full bg-slate-200 transition peer-checked:bg-emerald-500" />
+                <span className="absolute left-1 h-4 w-4 rounded-full bg-white transition peer-checked:translate-x-5" />
+              </span>
+            </label>
+            <div className="mt-2 text-[11px] text-slate-500">
+              When on, explanations play automatically once buffered.
+            </div>
+          </div>
 
           <label className="text-xs font-semibold text-slate-600">
             Additional notes

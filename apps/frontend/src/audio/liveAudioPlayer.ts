@@ -1,5 +1,9 @@
 import type { WaveformPoint } from "./audioTypes";
 
+const isDev = import.meta.env.MODE !== "production";
+
+type Segment = { buffer: AudioBuffer; startMs: number; endMs: number };
+
 export class LiveAudioPlayer {
   private audioCtx: AudioContext;
   private analyser: AnalyserNode;
@@ -9,11 +13,16 @@ export class LiveAudioPlayer {
    * Jitter buffer queue (AudioBuffers not yet scheduled).
    * We only start playback once pendingBufferedSec >= minStartBufferSec.
    */
-  private queue: AudioBuffer[] = [];
+  private queue: Segment[] = [];
+  private segments: Segment[] = []; // retained “tape” for replay/seek
+  private activeSources: AudioBufferSourceNode[] = [];
   private pendingBufferedSec = 0;
 
   private playing = false;
   private stopped = false;
+  private outputEnabled = false;
+  private everPlayedThisSession = false;
+  private ended = false;
 
   private totalEnqueuedDurationMs = 0;
   private waveform: WaveformPoint[] = [];
@@ -30,6 +39,8 @@ export class LiveAudioPlayer {
 
   // Stable scheduler cursor in AudioContext time (seconds)
   private nextPlayTimeSec: number | null = null;
+
+  private replayFromMsTarget: number | null = null;
 
   // ==== Scheduling & buffering tuning ====
   // Keep cursor ~ this far ahead of "now". Increase if you still underrun.
@@ -84,7 +95,7 @@ export class LiveAudioPlayer {
       this.unlocked = true;
 
       // If we already queued audio, attempt to schedule (will respect minStartBuffer)
-      this.kick();
+      if (this.outputEnabled) this.kick();
       return true;
     } catch (err) {
       console.warn("LiveAudioPlayer.unlock() failed:", err);
@@ -95,6 +106,7 @@ export class LiveAudioPlayer {
   private async ensureRunning(): Promise<boolean> {
     if (this.stopped) return false;
     if (!this.unlocked) return false;
+    if (!this.outputEnabled) return false;
 
     try {
       if (this.audioCtx.state !== "running") {
@@ -230,18 +242,23 @@ export class LiveAudioPlayer {
     const endMs = startMs + durationMs;
 
     // Jitter buffer: enqueue without scheduling immediately
-    this.queue.push(buffer);
-    this.pendingBufferedSec += buffer.duration;
+    const seg = { buffer, startMs, endMs };
+    this.pushWaveformFromBuffer(seg);
 
+    this.queue.push(seg);
+    this.segments.push(seg);
+
+    this.pendingBufferedSec += buffer.duration;
     this.totalEnqueuedDurationMs = endMs;
 
     const ok = await this.ensureRunning();
-    if (ok) this.schedule();
+    if (ok && this.outputEnabled) this.schedule();
 
     return { startMs, endMs };
   }
 
   private schedule() {
+    if (!this.outputEnabled) return;
     if (this.stopped) return;
     if (this.queue.length === 0) return;
 
@@ -287,6 +304,8 @@ export class LiveAudioPlayer {
     // Start bookkeeping once we truly begin output
     if (!this.playing) {
       this.playing = true;
+      this.ended = false;
+      this.everPlayedThisSession = true;
 
       // Anchor timeline on first-ever play
       if (this.startTimeMs == null) {
@@ -299,32 +318,52 @@ export class LiveAudioPlayer {
     // Schedule as many buffers as we have queued.
     // (If you want, you can cap scheduling to e.g. 1??"2s ahead, but not required.)
     while (this.queue.length > 0) {
-      const buffer = this.queue.shift()!;
-      this.pendingBufferedSec = Math.max(
-        0,
-        this.pendingBufferedSec - buffer.duration,
+      const startAt = Math.max(
+        this.nextPlayTimeSec ?? earliestSafe,
+        earliestSafe,
       );
 
-      if (this.nextPlayTimeSec == null) {
-        this.nextPlayTimeSec = earliestSafe;
-      }
-      const startAt = Math.max(this.nextPlayTimeSec ?? earliestSafe, earliestSafe);
+      const seg = this.queue.shift()!;
+      this.pendingBufferedSec = Math.max(
+        0,
+        this.pendingBufferedSec - seg.buffer.duration,
+      );
+
+      const buffer = seg.buffer;
 
       const source = ctx.createBufferSource();
       source.buffer = buffer;
       source.playbackRate.value = this.playbackRate;
       source.connect(this.analyser);
-      source.start(startAt);
 
-      // UI-only, best effort (don??Tt block audio)
-      this.captureAmplitude();
+      // Track sources so we can stop them on replay
+      this.activeSources.push(source);
 
       const endAt = startAt + buffer.duration;
       this.nextPlayTimeSec = endAt;
 
+      let offsetSec = 0;
+      if (this.replayFromMsTarget != null) {
+        const t = this.replayFromMsTarget;
+
+        if (t >= seg.endMs) {
+          // skip segment entirely
+          continue;
+        }
+        if (t > seg.startMs) {
+          offsetSec = (t - seg.startMs) / 1000;
+        }
+
+        // only apply offset on the first scheduled segment for this replay
+        this.replayFromMsTarget = null;
+      }
+
+      source.start(startAt, offsetSec);
+
       source.onended = () => {
+        this.activeSources = this.activeSources.filter((s) => s !== source);
+
         const cursor = this.nextPlayTimeSec ?? 0;
-        // Stop only after we??Tve truly finished scheduled audio and nothing pending
         if (
           !this.stopped &&
           this.queue.length === 0 &&
@@ -333,27 +372,204 @@ export class LiveAudioPlayer {
         ) {
           this.playing = false;
           this.nextPlayTimeSec = null;
+          this.ended = true;
           this.onStop?.();
         }
       };
+
+    }
+  }
+
+  private pushWaveformFromBuffer(seg: {
+    buffer: AudioBuffer;
+    startMs: number;
+    endMs: number;
+  }) {
+
+    
+    const ch0 = seg.buffer.getChannelData(0);
+    // const sr = seg.buffer.sampleRate;
+
+    // number of bars/points to add for this segment (tune for density)
+    const points = Math.max(
+      12,
+      Math.min(80, Math.floor(seg.buffer.duration * 40)),
+    );
+
+    const windowSize = Math.max(64, Math.floor(ch0.length / points));
+
+    for (let i = 0; i < points; i++) {
+      const start = i * windowSize;
+      const end = Math.min(ch0.length, start + windowSize);
+      if (end <= start) break;
+
+      let sumSq = 0;
+      let peak = 0;
+      for (let j = start; j < end; j++) {
+        const v = ch0[j]!;
+        sumSq += v * v;
+        const abs = Math.abs(v);
+        if (abs > peak) peak = abs;
+      }
+
+      const rms = Math.sqrt(sumSq / (end - start));
+      let amp = Math.max(rms * 1.6, peak * 0.9);
+      amp = Math.min(1, Math.pow(amp, 0.6));
+
+      const tMs = seg.startMs + (i / points) * (seg.endMs - seg.startMs);
+
+      this.waveform.push({ t: tMs, amp });
+    }
+
+    // keep a cap
+    if (this.waveform.length > 1200) {
+      this.waveform.splice(0, this.waveform.length - 1200);
     }
   }
 
   // Kick after unlock to flush queued audio (respects minStartBufferSec)
   kick(): void {
     if (this.stopped) return;
+    if (!this.outputEnabled) return;
     if (this.audioCtx.state !== "running") return;
     if (this.queue.length === 0) return;
 
     this.schedule();
   }
 
+  armOutput(): void {
+    if (this.stopped) return;
+    this.outputEnabled = true;
+    this.ended = false;
+    this.kick();
+  }
+
+  disarmOutput(): void {
+    if (this.stopped) return;
+    this.outputEnabled = false;
+  }
+
+  async pause(): Promise<boolean> {
+    if (this.stopped) return false;
+    try {
+      if (this.audioCtx.state === "running") {
+        await this.audioCtx.suspend();
+      }
+      return this.audioCtx.state === "suspended";
+    } catch (err) {
+      console.warn("AudioContext suspend failed:", err);
+      return false;
+    }
+  }
+
+  async resume(): Promise<boolean> {
+    if (this.stopped) return false;
+    try {
+      if (this.audioCtx.state !== "running") {
+        await this.audioCtx.resume();
+      }
+      if (this.outputEnabled) this.kick();
+      return this.audioCtx.state === "running";
+    } catch (err) {
+      console.warn("AudioContext resume failed:", err);
+      return false;
+    }
+  }
+
+  replayFromMs(targetMs: number): void {
+    if (this.stopped) return;
+
+    const maxMs = this.getBufferedDurationMs();
+    const safeMs = Math.max(0, Math.min(targetMs, Math.max(0, maxMs - 10)));
+
+    // stop any scheduled sources immediately
+    for (const s of this.activeSources) {
+      try {
+        s.stop();
+      } catch {
+        // ignore
+      }
+    }
+    this.activeSources = [];
+
+    // rebuild queue from retained segments
+    this.queue = this.segments.slice(); // shallow copy
+    this.pendingBufferedSec = this.queue.reduce(
+      (acc, seg) => acc + seg.buffer.duration,
+      0,
+    );
+
+    // reset scheduler cursor so we can schedule again
+    this.nextPlayTimeSec = null;
+    this.playing = false;
+    this.ended = false;
+
+    // re-anchor UI playhead to the target
+    this.startTimeMs = this.audioCtx.currentTime * 1000 - safeMs;
+
+    // apply offset into first segment during scheduling
+    this.replayFromMsTarget = safeMs;
+
+    this.armOutput();
+    this.kick();
+  }
+
+  resetSession(): void {
+    if (this.stopped) return;
+    if (isDev) {
+      console.warn(
+        "[LiveAudioPlayer.resetSession]",
+        {
+          totalEnqueuedDurationMs: this.totalEnqueuedDurationMs,
+          pendingBufferedSec: this.pendingBufferedSec,
+          waveformLen: this.waveform.length,
+        },
+        new Error().stack,
+      );
+    }
+
+    this.queue = [];
+    this.pendingBufferedSec = 0;
+    this.totalEnqueuedDurationMs = 0;
+    this.nextPlayTimeSec = null;
+    this.startTimeMs = null;
+    this.waveform = [];
+
+    this.playing = false;
+    this.ended = false;
+    this.outputEnabled = false;
+    this.everPlayedThisSession = false;
+
+    this.segments = [];
+    this.activeSources = [];
+    this.replayFromMsTarget = null;
+    this.seekFadeToken += 1;
+
+    if (this.seekFadeTimeoutId != null) {
+      window.clearTimeout(this.seekFadeTimeoutId);
+      this.seekFadeTimeoutId = null;
+    }
+  }
+
   stop() {
+    if (isDev) {
+      console.warn(
+        "[LiveAudioPlayer.stop]",
+        {
+          totalEnqueuedDurationMs: this.totalEnqueuedDurationMs,
+          pendingBufferedSec: this.pendingBufferedSec,
+          waveformLen: this.waveform.length,
+        },
+        new Error().stack,
+      );
+    }
     this.queue = [];
     this.pendingBufferedSec = 0;
 
     this.playing = false;
     this.stopped = true;
+    this.outputEnabled = false;
+    this.ended = false;
 
     this.startTimeMs = null;
     this.totalEnqueuedDurationMs = 0;
@@ -364,6 +580,22 @@ export class LiveAudioPlayer {
 
   getWaveform(): WaveformPoint[] {
     return this.waveform;
+  }
+
+  getBufferedDurationMs(): number {
+    return this.totalEnqueuedDurationMs;
+  }
+
+  getPendingBufferedSec(): number {
+    return this.pendingBufferedSec;
+  }
+
+  isOutputEnabled(): boolean {
+    return this.outputEnabled;
+  }
+
+  isEnded(): boolean {
+    return this.ended;
   }
 
   private applyEdgeFade(buffer: AudioBuffer, fadeSeconds: number) {
@@ -384,25 +616,6 @@ export class LiveAudioPlayer {
       const idx = n - 1 - i;
       const k = i / Math.max(1, fadeSamples - 1);
       data[idx] *= 1 - k;
-    }
-  }
-
-  private captureAmplitude() {
-    const data = new Uint8Array(this.analyser.frequencyBinCount);
-    this.analyser.getByteTimeDomainData(data);
-
-    let sum = 0;
-    for (const v of data) sum += Math.abs(v - 128);
-
-    const amp = Math.min(1, sum / data.length / 128);
-
-    this.waveform.push({
-      t: this.getCurrentTimeMs(),
-      amp,
-    });
-
-    if (this.waveform.length > 500) {
-      this.waveform.shift();
     }
   }
 }
