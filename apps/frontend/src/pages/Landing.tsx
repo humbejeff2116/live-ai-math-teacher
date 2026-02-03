@@ -1,5 +1,6 @@
 import { AstridLogo } from "@/components/astrid/AstridLogo";
 import { routes } from "@/routes";
+import { appName } from "@shared/types";
 import {
   ArrowRight,
   BotMessageSquare,
@@ -59,7 +60,7 @@ export function Landing() {
               </h1>
 
               <p className="mt-4 max-w-xl text-base leading-relaxed text-slate-600">
-                SolveAI is a real-time AI math tutor that explains problems as
+                {appName} is a real-time AI math tutor that explains problems as
                 you learn — not after. Powered by{" "}
                 <span className="font-semibold text-slate-800">Astrid</span>, an
                 interactive AI teacher you can pause, question, and rewind.
@@ -70,7 +71,7 @@ export function Landing() {
                   to={routes.demo}
                   className="inline-flex items-center gap-2 rounded-xl bg-indigo-600 px-4 py-3 text-sm font-semibold text-white shadow-sm transition hover:bg-indigo-700"
                 >
-                  Try SolveAI <ArrowRight size={16} />
+                  Try {appName} <ArrowRight size={16} />
                 </Link>
                 <Link
                   to="#how-it-works"
@@ -160,9 +161,9 @@ export function Landing() {
               Most AI math tools skip the learning.
             </h2>
             <p className="mt-3 max-w-3xl text-sm leading-relaxed text-slate-600">
-              They give a final answer and a wall of explanation text. There’s
+              They give a final answer and a wall of explanation text. There's
               no natural way to interrupt, ask “why?” mid-step, or revisit the
-              exact part you didn’t understand. Learning becomes passive.
+              exact part you didn't understand. Learning becomes passive.
             </p>
 
             <div className="mt-6 grid gap-3 sm:grid-cols-3">
@@ -196,7 +197,7 @@ export function Landing() {
                 A live AI teacher, not a calculator.
               </h2>
               <p className="mt-3 text-sm leading-relaxed text-slate-600">
-                SolveAI turns problem-solving into a conversation. Explanations
+                {appName} turns problem-solving into a conversation. Explanations
                 stream live. Steps stay visible. And you can jump back to any
                 step and continue learning from there.
               </p>
@@ -264,13 +265,13 @@ export function Landing() {
         <section id="why" className="mx-auto w-full max-w-6xl px-4 py-10">
           <div className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm sm:p-8">
             <div className="text-xs font-semibold uppercase tracking-wide text-slate-500">
-              Why SolveAI matters
+              Why {appName} matters
             </div>
             <h2 className="mt-2 text-2xl font-semibold tracking-tight sm:text-3xl">
               Learning isn’t linear. Teaching shouldn’t be either.
             </h2>
             <p className="mt-3 max-w-3xl text-sm leading-relaxed text-slate-600">
-              SolveAI is built around how students actually learn: stopping,
+              {appName} is built around how students actually learn: stopping,
               asking questions, revisiting confusing steps, and moving forward
               with confidence.
             </p>
@@ -300,7 +301,7 @@ export function Landing() {
                   Stop memorizing answers. Start understanding them.
                 </h2>
                 <p className="mt-2 text-sm text-slate-600">
-                  Try SolveAI and learn step by step with Astrid.
+                  Try {appName} and learn step by step with Astrid.
                 </p>
               </div>
               <div className="flex flex-wrap gap-3">
@@ -308,7 +309,7 @@ export function Landing() {
                   to={routes.demo}
                   className="inline-flex items-center gap-2 rounded-xl bg-indigo-600 px-4 py-3 text-sm font-semibold text-white shadow-sm transition hover:bg-indigo-700"
                 >
-                  Try SolveAI <ArrowRight size={16} />
+                  Try {appName} <ArrowRight size={16} />
                 </Link>
                 <Link
                   to="#how-it-works"
@@ -321,7 +322,7 @@ export function Landing() {
           </div>
 
           <footer className="mt-8 text-center text-xs text-slate-500">
-            © {new Date().getFullYear()} SolveAI · Powered by Astrid
+            © {new Date().getFullYear()} {appName} · Powered by Astrid
           </footer>
         </section>
       </main>
