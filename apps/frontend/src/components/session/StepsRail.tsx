@@ -19,6 +19,11 @@ type StepsRailProps = {
   onStepClick?: (id: string, rect: DOMRect) => void;
   onReExplain: (id: string, style?: ReexplanStyle) => void;
   reExplainStepId?: string | null;
+  onVisualHint?: (step: UIEquationStep) => void;
+  onVisualHintOpen?: (step: UIEquationStep, rect: DOMRect) => void;
+  captureStepId?: string | null;
+  equationCaptureRef?: React.RefObject<HTMLDivElement | null>;
+  visualHintStatus?: "idle" | "capturing" | "requesting" | "ready" | "error";
 };
 
 const TOOLTIP_STORAGE_KEY = "stepsRailTooltipSeen";
@@ -37,6 +42,11 @@ export function StepsRail({
   onStepClick,
   onReExplain,
   reExplainStepId = null,
+  onVisualHint,
+  onVisualHintOpen,
+  captureStepId,
+  equationCaptureRef,
+  visualHintStatus,
 }: StepsRailProps) {
   const [showTooltip, setShowTooltip] = useState(false);
   const [collapsed, setCollapsed] = useState(false);
@@ -111,6 +121,11 @@ export function StepsRail({
               confusionConfirmedStepIndex={confusionConfirmedStepIndex}
               onReExplain={onReExplain}
               onStepClick={onStepClick}
+              onVisualHint={onVisualHint}
+              onVisualHintOpen={onVisualHintOpen}
+              captureStepId={captureStepId ?? null}
+              equationCaptureRef={equationCaptureRef}
+              visualHintStatus={visualHintStatus}
               showHeader={false}
             />
           ) : (

@@ -123,7 +123,7 @@ export const Waveform: React.FC<WaveformProps> = ({
       {/* Tooltip - Now uses the safely captured localHoverTop */}
       {localHoverMs !== null && hoverLabel && (
         <div
-          className="pointer-events-none absolute z-[9999] -translate-x-1/2 rounded-md bg-slate-900 px-2 py-1 text-[10px] font-bold text-white shadow-xl ring-1 ring-white/20"
+          className="pointer-events-none fixed z-[9999] -translate-x-1/2 rounded-md bg-slate-900 px-2 py-1 text-[10px] font-bold text-white shadow-xl ring-1 ring-white/20"
           style={{
             left: localHoverX,
             top: localHoverTop - 35,

@@ -1,4 +1,7 @@
-import type { ReexplanStyle, TeacherState } from "@shared/types";
+import type {
+  ReexplanStyle,
+  TeacherState,
+} from "@shared/types";
 import type { UIEquationStep } from "../session/useLiveSession";
 import { Fragment, useEffect } from "react";
 import type { AudioPlaybackState } from "../audio/audioTypes";
@@ -17,6 +20,11 @@ type EquationStepsProps = {
   confusionConfirmedStepIndex?: number;
   onReExplain: (id: string, style?: ReexplanStyle) => void;
   onStepClick?: (id: string, rect: DOMRect) => void;
+  onVisualHint?: (step: UIEquationStep) => void;
+  onVisualHintOpen?: (step: UIEquationStep, rect: DOMRect) => void;
+  captureStepId?: string | null;
+  equationCaptureRef?: React.RefObject<HTMLDivElement | null>;
+  visualHintStatus?: "idle" | "capturing" | "requesting" | "ready" | "error";
   showHeader?: boolean;
 };
 
@@ -34,6 +42,11 @@ export function EquationSteps({
   confusionConfirmedStepIndex,
   onReExplain,
   onStepClick,
+  onVisualHint,
+  onVisualHintOpen,
+  captureStepId = null,
+  equationCaptureRef,
+  visualHintStatus = "idle",
   showHeader = true,
 }: EquationStepsProps) {
   const isDev = import.meta.env.MODE !== "production";
@@ -176,6 +189,7 @@ export function EquationSteps({
           !isConfusionPending &&
           confusionConfirmedStepIndex != null &&
           step.index === confusionConfirmedStepIndex;
+        const isCaptureStep = step.id === captureStepId;
         const stepBadge = getStepBadge(step.id);
         const pendingLabelTop = stepBadge ? 30 : 8;
         const confusionClassName = isConfusionPending
@@ -204,11 +218,23 @@ export function EquationSteps({
                 color: "#475569",
                 border: "1px solid rgba(148,163,184,0.35)",
               };
+        const hintIsBusy =
+          isCaptureStep &&
+          (visualHintStatus === "capturing" ||
+            visualHintStatus === "requesting");
+        const hintLabel =
+          visualHintStatus === "capturing"
+            ? "Capturing..."
+            : visualHintStatus === "requesting"
+              ? "Requesting..."
+              : "Visual hint";
 
         return (
           <Fragment key={step.id}>
             <div
               id={`step-${step.id}`}
+              data-step-card="true"
+              ref={isCaptureStep ? equationCaptureRef : undefined}
               className={`${confusionClassName} shadow-sm rounded-md border border-slate-200`}
               title={
                 isConfusionPending ? "Waiting for confirmation..." : undefined
@@ -359,6 +385,37 @@ export function EquationSteps({
                 >
                   With example
                 </button>
+                {onVisualHint && isCaptureStep && (
+                  <button
+                    onClick={(event) => {
+                      event.stopPropagation();
+                      if (hintIsBusy) return;
+                      onVisualHint(step);
+                      const card = event.currentTarget.closest(
+                        "[data-step-card='true']",
+                      );
+                      const rect =
+                        card instanceof HTMLElement
+                          ? card.getBoundingClientRect()
+                          : event.currentTarget.getBoundingClientRect();
+                      onVisualHintOpen?.(step, rect);
+                    }}
+                    disabled={hintIsBusy}
+                    style={{
+                      marginLeft: 8,
+                      color: hintIsBusy ? "#94a3b8" : "#ea580c",
+                      padding: "4px 8px",
+                      borderRadius: 6,
+                      fontWeight: 600,
+                      cursor: hintIsBusy ? "default" : "pointer",
+                      border: "1px solid rgba(234,88,12,0.6)",
+                      background: "white",
+                      opacity: hintIsBusy ? 0.7 : 1,
+                    }}
+                  >
+                    {hintLabel}
+                  </button>
+                )}
               </div>
             </div>
             {isAnimated && (

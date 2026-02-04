@@ -66,6 +66,7 @@ export const env = {
   qstashToken: process.env.QSTASH_TOKEN,
   koyebServiceUrl: process.env.KOYEB_SERVICE_URL,
   allowedOrigins: process.env.CORS_ORIGIN?.split(",") ?? [],
+  visualHintMock: process.env.VISUAL_HINT_MOCK,
 
   /**
    * Gemini API configuration

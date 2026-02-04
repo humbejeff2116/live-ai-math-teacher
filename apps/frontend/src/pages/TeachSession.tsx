@@ -16,6 +16,9 @@ import { useDebugState } from "../state/debugState";
 import { useWebSocketState } from "../state/weSocketState";
 import { ConfusionConfirmToast } from "@/components/session/ConfusionConfirmationToast";
 import { logEvent } from "../lib/debugTimeline";
+import type { UIEquationStep } from "../session/useLiveSession";
+import { useVisualHintOverlay } from "../visualHint/useVisualHintOverlay";
+import { VisualHintPopover } from "../visualHint/VisualHintPopover";
 import {
   getDecision as getPersonalizationDecision,
   recordEvent as recordPersonalizationEvent,
@@ -52,6 +55,12 @@ export function TeachingSession() {
     id: number;
     message: string;
   } | null>(null);
+  const [visualHintPopoverOpen, setVisualHintPopoverOpen] = useState(false);
+  const [visualHintAnchorRect, setVisualHintAnchorRect] =
+    useState<DOMRect | null>(null);
+  const [visualHintStepLabel, setVisualHintStepLabel] = useState<
+    string | undefined
+  >(undefined);
   const [demoNarrativeMode, setDemoNarrativeMode] = useState(
     () => isDev && import.meta.env.VITE_DEMO_NARRATIVE === "true",
   );
@@ -66,6 +75,7 @@ export function TeachingSession() {
   const reExplainDelayTimeoutRef = useRef<number | null>(null);
   const silenceHandlingDelayRef = useRef<number | null>(null);
   const activeSilenceOfferIdRef = useRef<string | null>(null);
+  const equationCaptureRef = useRef<HTMLDivElement | null>(null);
   const SOFT_MEMORY_MS = 45_000;
 
   const {
@@ -300,6 +310,8 @@ export function TeachingSession() {
       ? visibleSteps[visibleSteps.length - 1]!.id
       : null;
 
+  const captureStepId = activeStepId ?? lastVisibleStepId ?? null;
+
   const silenceStepIdHint = activeStepId ?? lastVisibleStepId ?? null;
 
   const silenceNudgeEnabled =
@@ -496,6 +508,60 @@ export function TeachingSession() {
     }, 1600);
   }, []);
 
+  const visualHint = useVisualHintOverlay({
+    equationNodeRef: equationCaptureRef,
+    problemId: String(currentProblemId),
+    maxOverlays: 6,
+    allowTextOverlays: true,
+  });
+
+  const lastStudentUtterance = useMemo(() => {
+    for (let i = chat.length - 1; i >= 0; i -= 1) {
+      const msg = chat[i];
+      if (msg?.role === "student") return msg.text;
+    }
+    return undefined;
+  }, [chat]);
+
+  const handleVisualHintRequest = useCallback(
+    (step: UIEquationStep) => {
+      if (
+        visualHint.status === "ready" &&
+        visualHint.overlayStepId === step.id
+      ) {
+        return;
+      }
+      visualHint.requestHint({
+        stepId: step.id,
+        uiIndex: step.uiIndex,
+        equationText: step.equation,
+        explanationText: step.text,
+        student: {
+          lastUtterance: lastStudentUtterance,
+          confusionReason: teacherMeta.confusionNudge?.reason,
+          confusionSeverity: teacherMeta.confusionNudge?.severity,
+        },
+      });
+    },
+    [
+      lastStudentUtterance,
+      teacherMeta.confusionNudge?.reason,
+      teacherMeta.confusionNudge?.severity,
+      visualHint.requestHint,
+      visualHint.overlayStepId,
+      visualHint.status,
+    ],
+  );
+
+  const handleVisualHintOpen = useCallback(
+    (step: UIEquationStep, rect: DOMRect) => {
+      setVisualHintPopoverOpen(true);
+      setVisualHintAnchorRect(rect);
+      setVisualHintStepLabel(`Step ${step.uiIndex}`);
+    },
+    [],
+  );
+
   useEffect(() => {
     if (
       teacherState === "thinking" ||
@@ -599,6 +665,17 @@ export function TeachingSession() {
     sendUserMessage(message);
     setInput("");
   };
+
+  useEffect(() => {
+    if (!visualHint.error) return;
+    showActionToast(visualHint.error);
+  }, [showActionToast, visualHint.error]);
+
+  useEffect(() => {
+    setVisualHintPopoverOpen(false);
+    setVisualHintAnchorRect(null);
+    setVisualHintStepLabel(undefined);
+  }, [aiLifecycleTick, currentProblemId]);
 
   const onStartListening = async () => {
     await unlockAudio();
@@ -933,6 +1010,11 @@ export function TeachingSession() {
             onReExplain={handleReExplain}
             onStepClick={handleStepClick}
             reExplainStepId={reExplainStepId}
+            onVisualHint={handleVisualHintRequest}
+            onVisualHintOpen={handleVisualHintOpen}
+            captureStepId={captureStepId}
+            equationCaptureRef={equationCaptureRef}
+            visualHintStatus={visualHint.status}
           />
         }
         conversation={
@@ -962,6 +1044,18 @@ export function TeachingSession() {
             showSilencePulse={hasSilenceNudge && !isTyping}
           />
         }
+      />
+
+      <VisualHintPopover
+        open={visualHintPopoverOpen}
+        anchorRect={visualHintAnchorRect}
+        status={visualHint.status}
+        errorMessage={visualHint.error}
+        capture={visualHint.capture}
+        captureDataUrl={visualHint.captureDataUrl}
+        overlay={visualHint.overlay}
+        stepLabel={visualHintStepLabel}
+        onClose={() => setVisualHintPopoverOpen(false)}
       />
 
       {silenceNudge && (

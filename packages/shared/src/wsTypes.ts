@@ -1,4 +1,9 @@
-import type { EquationStep, ReexplanStyle } from "./types";
+import type {
+  EquationStep,
+  ReexplanStyle,
+  VisualHintOverlayV1,
+  VisualHintRequestV1,
+} from "./types";
 import type { TeacherSignal } from "./teacherState";
 
 export type ResumeFromStepSource = "waveform";
@@ -127,6 +132,10 @@ export type ClientToServerMessage =
         choice: "hint" | "explain"; // NEW
         atMs: number;
       };
+    }
+  | {
+      type: "visual_hint_request";
+      payload: VisualHintRequestV1;
     };
 
 export type ServerToClientMessage =
@@ -236,5 +245,22 @@ export type ServerToClientMessage =
         reason: ConfusionReason;
         severity: ConfusionSeverity;
         atMs: number;
+      };
+    }
+  | {
+      type: "visual_hint_overlay";
+      payload: {
+        requestId: string;
+        stepId: string;
+        overlay: VisualHintOverlayV1;
+      };
+    }
+  | {
+      type: "visual_hint_error";
+      payload: {
+        requestId: string;
+        stepId: string;
+        message: string;
+        details?: string;
       };
     };

@@ -1,9 +1,11 @@
 import WebSocket from "ws";
 import { GeminiLiveSession } from "../gemini/live/GeminiLiveSession.js";
 import { ClientToServerMessage } from "@shared/types";
+import { VisualHintHandler } from "../gemini/visualHint/geminiVisualHint.js";
 
 export function liveSocketHandler(ws: WebSocket) {
   const session = new GeminiLiveSession(ws);
+  const visualHintHandler = new VisualHintHandler(ws);
 
   ws.on("message", async (raw) => {
     const msg = JSON.parse(raw.toString()) as ClientToServerMessage;
@@ -66,6 +68,11 @@ export function liveSocketHandler(ws: WebSocket) {
       case "reset_session":
         session.resetProblem();
         break;
+
+      case "visual_hint_request": {
+        await visualHintHandler.handleGenerateVisualHint(msg.payload);
+        break;
+      }
 
       default:
         console.warn("Unknown message type:", msg);
