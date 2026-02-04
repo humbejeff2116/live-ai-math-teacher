@@ -1,11 +1,10 @@
-import type { RefObject } from "react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { LiveAudioPlayer } from "./liveAudioPlayer";
 import type { AudioPlaybackState, WaveformPoint } from "./audioTypes";
 import type { AudioStepTimeline } from "./audioStepTimeLine";
 import { getAutoplay, setAutoplay as setAutoplaySetting } from "./autoplaySetting";
 
-export function useLiveAudio(timelineRef?: RefObject<AudioStepTimeline>) {
+export function useLiveAudio(getAudioStepTimeline: () => AudioStepTimeline) {
   const isDev = import.meta.env.MODE !== "production";
   const [audioState, setAudioState] = useState<AudioPlaybackState>("idle");
   const [waveform, setWaveform] = useState<WaveformPoint[]>([]);
@@ -16,15 +15,14 @@ export function useLiveAudio(timelineRef?: RefObject<AudioStepTimeline>) {
   );
   const playerRef = useRef<LiveAudioPlayer | null>(null);
   const didAutoplayRef = useRef(false);
+  const timeline = getAudioStepTimeline();
   const READY_SEC = 0.3;
 
   useEffect(() => {
     const player = new LiveAudioPlayer(
       () => setAudioState("playing"),
       () =>
-        setAudioState(
-          player.getBufferedDurationMs() > 0 ? "ended" : "idle",
-        ),
+        setAudioState(player.getBufferedDurationMs() > 0 ? "ended" : "idle"),
     );
     playerRef.current = player;
 
@@ -80,7 +78,7 @@ export function useLiveAudio(timelineRef?: RefObject<AudioStepTimeline>) {
     syncFromPlayer();
     return ok;
   }, [syncFromPlayer]);
-  
+
   const play = useCallback(() => {
     const player = playerRef.current;
     if (!player) return;
@@ -118,12 +116,12 @@ export function useLiveAudio(timelineRef?: RefObject<AudioStepTimeline>) {
 
   const playChunk = useCallback(
     async (base64: string, stepId?: string, mimeType?: string) => {
+      // console.log("[liveAudio.playChunk] called", { stepId, mimeType });
       const player = playerRef.current;
       if (!player) return;
 
       const isFreeform =
         typeof stepId === "string" && stepId.startsWith("__freeform__");
-      const timeline = timelineRef?.current;
 
       const isPcm =
         mimeType?.startsWith("audio/pcm") ||
@@ -136,7 +134,12 @@ export function useLiveAudio(timelineRef?: RefObject<AudioStepTimeline>) {
         if (bytes.length % 2 === 1) bytes = bytes.slice(0, bytes.length - 1);
 
         const chunkSamples = bytes.length / 2;
+
         if (chunkSamples > 0) {
+          // console.log("[liveAudio.playChunk] Registering", {
+          //   stepId,
+          //   chunkSamples,
+          // });
           timeline.registerChunkSamples(stepId, chunkSamples);
         }
       }
@@ -146,19 +149,6 @@ export function useLiveAudio(timelineRef?: RefObject<AudioStepTimeline>) {
       const pendingSec = player.getPendingBufferedSec();
       setBufferedDurationMs(totalMs);
       setWaveform([...player.getWaveform()]);
-      if (isDev) {
-        console.warn(
-          "[liveAudio.playChunk]",
-          {
-            audioState,
-            totalMs,
-            pendingSec,
-            waveformLen: player.getWaveform().length,
-          },
-          new Error().stack,
-        );
-      }
-
 
       setAudioState((prev) => {
         if (prev === "playing" || prev === "paused") return prev;
@@ -172,14 +162,17 @@ export function useLiveAudio(timelineRef?: RefObject<AudioStepTimeline>) {
         return prev;
       });
     },
-    [audioState, isDev, timelineRef],
+    [timeline],
   );
 
   const seekToMs = useCallback((targetMs: number) => {
     const player = playerRef.current;
     if (!player) return;
     const maxMs = player.getBufferedDurationMs();
-    const safeTargetMs = Math.max(0, Math.min(targetMs, Math.max(0, maxMs - 10)));
+    const safeTargetMs = Math.max(
+      0,
+      Math.min(targetMs, Math.max(0, maxMs - 10)),
+    );
     player.seekToMs(safeTargetMs);
     setCurrentTimeMs(safeTargetMs);
   }, []);
@@ -202,7 +195,7 @@ export function useLiveAudio(timelineRef?: RefObject<AudioStepTimeline>) {
         return false;
       }
     },
-    []
+    [],
   );
 
   const interrupt = useCallback(() => {
@@ -218,7 +211,6 @@ export function useLiveAudio(timelineRef?: RefObject<AudioStepTimeline>) {
     if (ok) setAudioState("paused");
     return ok;
   }, []);
-
 
   const reset = useCallback(() => {
     const player = playerRef.current;

@@ -10,7 +10,7 @@ import { useLiveAudio } from "../audio/useLiveAudio";
 import { useWebSocketState } from "../state/weSocketState";
 import { useTeacherState } from "./useTeacherState";
 import { AudioStepTimeline } from "../audio/audioStepTimeLine";
-import { classifyConfusion } from "./session.utils";
+import { classifyConfusion, countSamplesFromBase64 } from "./session.utils";
 import { logEvent } from "../lib/debugTimeline";
 import {
   getDecision as getPersonalizationDecision,
@@ -25,8 +25,11 @@ export function useLiveSession() {
   const lastStepIndexRef = useRef<number | null>(null);
   const stepTimelineRef = useRef(new AudioStepTimeline({ sampleRate: 24000 }));
 
+  const getAudioStepTimeline = useCallback(() => {
+    return stepTimelineRef.current;
+  }, []);
 
-  const liveAudio = useLiveAudio(stepTimelineRef);
+  const liveAudio = useLiveAudio(getAudioStepTimeline);
 
   const {
     chat,
@@ -51,8 +54,9 @@ export function useLiveSession() {
     clearConfusionNudge,
     clearSilenceNudge,
     reexplainStepId,
+    // timelineTick,
   } = useHandleMessage(
-    stepTimelineRef,
+    getAudioStepTimeline,
     sendTimeRef,
     lastStepIndexRef,
     liveAudio.playChunk,
@@ -123,40 +127,29 @@ export function useLiveSession() {
     resetLiveAudio,
   ]);
 
-  // 3. Cleanup logic: Stop audio/timers when the hook unmounts
-  useEffect(() => {
-    const timeline = stepTimelineRef.current;
-
-    return () => {
-      timeline.destroy?.();
-      console.log("Live session cleaned up.");
-    };
-  }, []);
   
+  const startNewProblem = useCallback(() => {
+    setProblemId(currentProblemIdRef.current + 1, "manual_start_new_problem");
 
-    const startNewProblem = useCallback(() => {
-      setProblemId(currentProblemIdRef.current + 1, "manual_start_new_problem");
+    // Clear the chat and steps locally
+    setChat([]);
+    setEquationSteps([]);
+    // Reset audio UX indicators
+    resetDebugForNewProblem()
 
-      // Clear the chat and steps locally
-      setChat([]);
-      setEquationSteps([]);
-      // Reset audio UX indicators
-      resetDebugForNewProblem()
-
-      // Inform the server to reset its internal step tracker
-      wsClientRef.current?.send({
-        type: "reset_session", // You'll need to handle this type on the server
-      });
-    }, [
-      currentProblemIdRef,
-      resetDebugForNewProblem,
-      setChat,
-      setEquationSteps,
-      setProblemId,
-      wsClientRef,
-    ]);
+    // Inform the server to reset its internal step tracker
+    wsClientRef.current?.send({
+      type: "reset_session", // You'll need to handle this type on the server
+    });
+  }, [
+    currentProblemIdRef,
+    resetDebugForNewProblem,
+    setChat,
+    setEquationSteps,
+    setProblemId,
+    wsClientRef,
+  ]);
   
-
   function sendUserMessage(text: string) {
     sendTimeRef.current = Date.now();
     appendStudentMessage(text);
@@ -258,13 +251,14 @@ export function useLiveSession() {
     resetTeacher,
     resumeFromStep,
     aiLifecycleTick,
-    getStepTimeline: () => stepTimelineRef.current,
+    getAudioStepTimeline: getAudioStepTimeline,
     getWSCLient: () => wsClientRef.current,
     startNewProblem,
     liveAudio,
     lastAudioChunkAtMs,
     clearConfusionNudge,
     clearSilenceNudge,
+    // timelineTick,
   };
 }
 
@@ -291,7 +285,7 @@ export type ChatMessage = {
 };
 
 export function useHandleMessage(
-  stepTimelineRef: React.RefObject<AudioStepTimeline>,
+  getAudioStepTimeline: () => AudioStepTimeline,
   sendTimeRef: React.RefObject<number | null>,
   lastStepIndexRef: React.RefObject<number | null>,
   playChunk: (b64: string, stepId?: string, mimeType?: string) => void,
@@ -316,6 +310,7 @@ export function useHandleMessage(
   const [lastAudioChunkAtMs, setLastAudioChunkAtMs] = useState<number | null>(
     null,
   );
+  // const [timelineTick, setTimelineTick] = useState(0);
   const { setState: setDebugState } = useDebugState();
   const bufferRef = useRef("");
   const currentProblemIdRef = useRef(0);
@@ -330,6 +325,8 @@ export function useHandleMessage(
     clearConfusionNudge,
     clearSilenceNudge,
   } = useTeacherState();
+
+  const stepTimeline = getAudioStepTimeline();
 
   const setProblemId = useCallback(
     (nextId: number, reason: ProblemChangeReason) => {
@@ -414,6 +411,8 @@ export function useHandleMessage(
       conceptIds: conceptIds.length > 0 ? conceptIds : undefined,
     };
   }, []);
+
+  // const bumpTimeline = () => setTimelineTick((prev) => prev + 1);
 
   const handleMessage = useCallback(
     (message: ServerToClientMessage) => {
@@ -512,10 +511,11 @@ export function useHandleMessage(
       //they can create overlapping ranges if mixed.
       if (message.type === "step_audio_start") {
         // IMPORTANT: use audio-relative timeline time, not wall-clock Date.now()
-        const tMs = stepTimelineRef.current.getTotalDurationMs();
-        stepTimelineRef.current.onStepStart(message.payload.stepId, tMs);
+        const tMs = stepTimeline.getCursorMs();
+        stepTimeline.onStepStart(message.payload.stepId, tMs);
 
         const stepIndex = stepIndexByIdRef.current.get(message.payload.stepId);
+        // bumpTimeline();
         logEvent("StepStarted", {
           step: stepIndex != null ? stepIndex + 1 : undefined,
           stepId: message.payload.stepId,
@@ -523,8 +523,8 @@ export function useHandleMessage(
       }
 
       if (message.type === "step_audio_end") {
-        const tMs = stepTimelineRef.current.getTotalDurationMs();
-        stepTimelineRef.current.onStepEnd(message.payload.stepId, tMs);
+        const tMs = stepTimeline.getCursorMs();
+        stepTimeline.onStepEnd(message.payload.stepId, tMs);
       }
 
 
@@ -596,6 +596,36 @@ export function useHandleMessage(
 
         setLastAudioChunkAtMs(Date.now());
 
+        if (isDev) {
+          console.log("[ai_audio_chunk] recv", {
+            stepId,
+            audioMimeType,
+            b64Len: audioBase64?.length,
+          });
+        }
+
+        // 1. Calculate how many samples this chunk represents
+        const numSamples = countSamplesFromBase64(audioBase64);
+
+        if (isDev) {
+          console.log("[ai_audio_chunk] samples", {
+            stepId,
+            audioMimeType,
+            numSamples,
+          });
+        }
+
+        // 2. Register them to advance the global cursor and create the range
+        stepTimeline.registerChunkSamples(stepId, numSamples);
+
+        if (isDev) {
+          console.log("[ai_audio_chunk] timeline after register", {
+            rangesCount: stepTimeline.getRanges().length,
+            totalMs: stepTimeline.getTotalDurationMs(),
+            lastRange: stepTimeline.getRanges().slice(-1)[0],
+          });
+        }
+
         // Only mark equation steps "ready" for non-freeform
         if (!isFreeform) {
           setEquationSteps((prev) => {
@@ -611,6 +641,7 @@ export function useHandleMessage(
         }
 
         playChunk(audioBase64, stepId, audioMimeType);
+        // bumpTimeline();
       }
 
 
@@ -649,7 +680,7 @@ export function useHandleMessage(
         // speak(message.payload.text);
       }
     },
-    [isDev, dispatchTeacher, setDebugState, sendTimeRef, resolveStepIdFromIndex, resolveStepTags, stepTimelineRef, lastStepIndexRef, DEBUG_EQUATION_STEPS, interruptTTS, playChunk, markTeacherUtteranceFinal],
+    [isDev, dispatchTeacher, setDebugState, sendTimeRef, resolveStepIdFromIndex, resolveStepTags, stepTimeline, lastStepIndexRef, DEBUG_EQUATION_STEPS, interruptTTS, playChunk, markTeacherUtteranceFinal],
   );
 
   //Your step status timer
@@ -698,5 +729,6 @@ export function useHandleMessage(
     clearConfusionNudge,
     clearSilenceNudge,
     reexplainStepId,
+    // timelineTick,
   };
 }

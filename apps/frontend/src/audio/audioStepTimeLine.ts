@@ -1,6 +1,8 @@
 /* eslint-disable @typescript-eslint/no-unused-vars */
 import type { StepAudioRange } from "@shared/types";
 
+const isDev = import.meta.env.MODE !== "production";
+
 type StepAudioRangeEx = StepAudioRange & {
   // Optional sample-accurate fields (preferred)
   startSample?: number;
@@ -32,6 +34,14 @@ export class AudioStepTimeline {
   onStepStart(stepId: string, atMs: number) {
     if (this._isDestroyed) return;
 
+    const existing = this.ranges.find((r) => r.stepId === stepId);
+    if (
+      existing &&
+      (existing.startSample != null || existing.endSample != null)
+    ) {
+      return;
+    }
+
     // Close previous open range if any
     const last = this.ranges[this.ranges.length - 1];
     if (last && last.endMs == null) {
@@ -48,7 +58,9 @@ export class AudioStepTimeline {
     const range = this.ranges.find(
       (r) => r.stepId === stepId && r.endMs == null,
     );
-    if (range) range.endMs = atMs;
+    if (range && range.endSample == null) {
+      range.endMs = atMs;
+    }
   }
 
   /**
@@ -87,7 +99,17 @@ export class AudioStepTimeline {
    *   timeline.registerChunkSamples(stepId, samples);
    */
   registerChunkSamples(stepId: string, chunkSamples: number) {
-    if (this._isDestroyed) return;
+    console.log("[AudioStepTimeline] registerChunkSamples called", {
+      stepId,
+      chunkSamples,
+    });
+    if (this._isDestroyed) {
+       console.error(
+         "[AudioStepTimeline] FATAL: registerChunkSamples called after destroy",
+         new Error().stack,
+       );
+      return
+    };
     if (chunkSamples <= 0) return;
 
     const startSample = this.globalSampleCursor;
@@ -101,6 +123,12 @@ export class AudioStepTimeline {
     const existing = this.ranges.find((r) => r.stepId === stepId);
 
     if (existing) {
+      console.log("[AudioStepTimeline] registerChunkSamples expanding existing", {
+        stepId,
+        startSample,
+        endSample,
+        existing: { ...existing },
+      });
       existing.startSample = Math.min(
         existing.startSample ?? startSample,
         startSample,
@@ -110,6 +138,11 @@ export class AudioStepTimeline {
       existing.startMs = Math.min(existing.startMs, startMs);
       existing.endMs = Math.max(existing.endMs ?? startMs, endMs);
     } else {
+      console.log("[AudioStepTimeline] registerChunkSamples inserting new", {
+        stepId,
+        startSample,
+        endSample,
+      });
       this.insertSortedByStartMs({
         stepId,
         startMs,
@@ -187,10 +220,16 @@ export class AudioStepTimeline {
     return undefined;
   }
 
+  private cursorMs(): number {
+    return (this.globalSampleCursor / this.sampleRate) * 1000;
+  }
+
+  getCursorMs(): number {
+    return this.cursorMs();
+  }
+
   getTotalDurationMs(): number {
-    if (this.ranges.length === 0) return 0;
-    const lastRange = this.ranges[this.ranges.length - 1];
-    return lastRange.endMs ?? lastRange.startMs;
+    return this.cursorMs();
   }
 
   getRanges(): StepAudioRange[] {
@@ -216,6 +255,59 @@ export class AudioStepTimeline {
     return { seekMs: base.startMs, range: base };
   }
 
+  /**
+   * O(log n) lookup that never returns undefined if ranges exist.
+   * If atMs is in a gap, it returns the closest step.
+   */
+  getNearestStep(atMs: number): string | undefined {
+    if (this._isDestroyed || this.ranges.length === 0) return undefined;
+
+    // 1. Try exact match first
+    const exact = this.getActiveStep(atMs);
+    console.log("[AudioStepTimeline] getNearestStep: exact match check", {
+      atMs,
+      exact,
+    });
+    if (exact) return exact;
+
+    console.log("[AudioStepTimeline] getNearestStep: no exact match, searching gaps", {
+      atMs,
+      ranges: this.ranges,
+    });
+
+    // 2. Boundary checks
+    if (atMs <= this.ranges[0].startMs) return this.ranges[0].stepId;
+    const last = this.ranges[this.ranges.length - 1];
+    if (atMs >= (last.endMs ?? Infinity)) return last.stepId;
+
+    // 3. Find the gap neighbors (Binary Search approach)
+    let low = 0;
+    let high = this.ranges.length - 1;
+    while (low <= high) {
+      const mid = Math.floor((low + high) / 2);
+      const range = this.ranges[mid];
+
+      if (atMs < range.startMs) {
+        high = mid - 1;
+      } else {
+        low = mid + 1;
+      }
+    }
+
+    // At this point, 'high' is the index before the gap, 'low' is the index after.
+    const prev = this.ranges[high];
+    const next = this.ranges[low];
+
+    if (!prev) return next?.stepId;
+    if (!next) return prev?.stepId;
+
+    // Return the step whose boundary is closer to the mouse
+    const distToPrev = Math.abs((prev.endMs ?? prev.startMs) - atMs);
+    const distToNext = Math.abs(next.startMs - atMs);
+
+    return distToPrev < distToNext ? prev.stepId : next.stepId;
+  }
+
   reset() {
     this.ranges = [];
     this.lastActiveIndex = 0;
@@ -230,6 +322,7 @@ export class AudioStepTimeline {
   // ========= internals =========
 
   private insertSortedByStartMs(range: StepAudioRangeEx) {
+    console.log("[AudioStepTimeline] insertSortedByStartMs called", { range });
     // Binary insert by startMs (keeps ranges sorted without full sort)
     let low = 0;
     let high = this.ranges.length;
@@ -241,6 +334,11 @@ export class AudioStepTimeline {
     }
 
     this.ranges.splice(low, 0, range);
+    console.log("[AudioStepTimeline] insertSortedByStartMs at index", {
+      index: low,
+      range,
+    });
+    console.log("[AudioStepTimeline] current ranges:", this.ranges);
   }
 
   private ensureSortedIfNeeded() {

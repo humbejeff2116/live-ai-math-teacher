@@ -1,10 +1,10 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 
 // Onboarding hints: existing steps tooltip is in StepsRail; added waveform scrub + confusion nudge hints use this helper.
-export function useOneShotHint(storageKey: string, autoHideMs = 4200) {
+export function useOneShotHint(storageKey: string, autoHideMs = 6200) {
   const [seen, setSeen] = useState(() => {
     if (typeof window === "undefined") return true;
-    return window.localStorage.getItem(storageKey) === "true";
+    return window.sessionStorage.getItem(storageKey) === "true";
   });
   const [visible, setVisible] = useState(false);
   const timeoutRef = useRef<number | null>(null);
@@ -12,7 +12,7 @@ export function useOneShotHint(storageKey: string, autoHideMs = 4200) {
   const showOnce = useCallback(() => {
     if (seen) return;
     if (typeof window !== "undefined") {
-      window.localStorage.setItem(storageKey, "true");
+      window.sessionStorage.setItem(storageKey, "true");
     }
     setSeen(true);
     setVisible(true);

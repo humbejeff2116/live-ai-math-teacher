@@ -8,7 +8,7 @@ import type { AudioPlaybackState } from "../../audio/audioTypes";
 type StepsRailProps = {
   steps: UIEquationStep[];
   activeStepId?: string;
-  previewStepId?: string;
+  previewStepId?: string | null;
   hoverStepId: string | null;
   animatedStepId: string | null;
   pendingStepId?: string;
@@ -50,17 +50,16 @@ export function StepsRail({
 
   const tooltipSeen = useMemo(() => {
     if (typeof window === "undefined") return true;
-    return window.localStorage.getItem(TOOLTIP_STORAGE_KEY) === "true";
+    return window.sessionStorage.getItem(TOOLTIP_STORAGE_KEY) === "true";
   }, []);
 
   useEffect(() => {
     if (!hasSteps || tooltipSeen) return;
-    window.localStorage.setItem(TOOLTIP_STORAGE_KEY, "true");
+    window.sessionStorage.setItem(TOOLTIP_STORAGE_KEY, "true");
     Promise.resolve().then(() => setShowTooltip(true));
     const timeout = window.setTimeout(() => setShowTooltip(false), 10500);
     return () => {
       window.clearTimeout(timeout);
-      window.localStorage.removeItem(TOOLTIP_STORAGE_KEY);
     }
   }, [hasSteps, tooltipSeen]);
 

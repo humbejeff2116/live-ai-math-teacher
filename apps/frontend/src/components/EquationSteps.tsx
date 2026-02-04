@@ -6,7 +6,7 @@ import type { AudioPlaybackState } from "../audio/audioTypes";
 type EquationStepsProps = {
   steps: UIEquationStep[];
   activeStepId?: string;
-  previewStepId?: string;
+  previewStepId?: string | null;
   hoverStepId: string | null;
   animatedStepId: string | null;
   pendingStepId?: string;

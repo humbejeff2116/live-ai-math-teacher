@@ -79,7 +79,7 @@ export function TeachingSession() {
     teacherState,
     resumeFromStep,
     aiLifecycleTick,
-    getStepTimeline,
+    getAudioStepTimeline,
     startNewProblem,
     liveAudio,
     lastAudioChunkAtMs,
@@ -87,6 +87,7 @@ export function TeachingSession() {
     teacherMeta,
     clearConfusionNudge,
     clearSilenceNudge,
+    // timelineTick,
   } = useLiveSession();
 
   const { 
@@ -133,11 +134,11 @@ export function TeachingSession() {
     },
   });
 
-  const stepTimeline = getStepTimeline();
+  const stepTimeline = getAudioStepTimeline();
   const activeStepId = stepTimeline.getActiveStepMonotonic(currentTimeMs);
   const audioConnStatus = debugState.audioStatus; // "connecting" | "reconnecting" | "ready" | "closed" | undefined
 
-  const {
+    const {
     previewStepId,
     hoverStep,
     hoverStepId,
@@ -147,7 +148,23 @@ export function TeachingSession() {
     setPendingSeek,
     handleOnseekRequest,
     handleSetPendingSeekByStep,
-  } = useWaveform(stepTimeline, equationSteps, currentTimeMs, aiLifecycleTick);
+  } = useWaveform(
+    stepTimeline,
+    equationSteps,
+    currentTimeMs,
+    aiLifecycleTick,
+    // timelineTick,
+  );
+
+  const handleWaveSeekRequest = useCallback(
+    (payload: { ms: number; clientX: number; clientY: number }) => {
+      if (isDev) {
+        console.log("[TeachingSession] onSeekRequest", payload);
+      }
+      handleOnseekRequest(payload);
+    },
+    [handleOnseekRequest, isDev],
+  );
 
   const {
     isConfirmingSeek,
@@ -264,12 +281,20 @@ export function TeachingSession() {
   );
   const showPauseButton = audioState === "playing";
   const showReplayButton = ["ended", "paused", "ready"].includes(audioState);
-  const waveformDurationMs = Math.max(
-    stepTimeline?.getTotalDurationMs() ?? 0,
-    bufferedDurationMs ?? 0,
-  );
+
+  const timelineTotal = stepTimeline?.getTotalDurationMs() ?? 0;
+  // If timelineTotal looks like seconds (small number), convert.
+  // Heuristic: anything > 0 and < 1000 is probably seconds, not ms.
+  const timelineTotalMs =
+    timelineTotal > 0 && timelineTotal < 1000
+      ? timelineTotal * 1000
+      : timelineTotal;
+  // Use the best available ms duration.
+  const waveformDurationMs = Math.max(timelineTotalMs, bufferedDurationMs, 0);
 
 
+
+  
   const lastVisibleStepId =
     visibleSteps.length > 0
       ? visibleSteps[visibleSteps.length - 1]!.id
@@ -554,7 +579,8 @@ export function TeachingSession() {
       bufferedDurationMs,
       waveformDurationMs,
     });
-  }, [audioState, waveform.length, bufferedDurationMs, waveformDurationMs]);
+
+  }, [audioState, waveform.length, bufferedDurationMs, waveformDurationMs, currentTimeMs]);
 
 
   const handleSend = async () => {
@@ -886,7 +912,7 @@ export function TeachingSession() {
                   hoverLabel={hoverLabel}
                   hoverMs={hoverMs}
                   onHoverTime={setHoverMs}
-                  onSeekRequest={handleOnseekRequest}
+                  onSeekRequest={handleWaveSeekRequest}
                 />
               </div>
             </div>
