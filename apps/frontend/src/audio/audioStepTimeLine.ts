@@ -1,8 +1,6 @@
 /* eslint-disable @typescript-eslint/no-unused-vars */
 import type { StepAudioRange } from "@shared/types";
 
-const isDev = import.meta.env.MODE !== "production";
-
 type StepAudioRangeEx = StepAudioRange & {
   // Optional sample-accurate fields (preferred)
   startSample?: number;

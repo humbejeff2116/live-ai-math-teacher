@@ -21,7 +21,7 @@ export class LiveAudioPlayer {
   private playing = false;
   private stopped = false;
   private outputEnabled = false;
-  private everPlayedThisSession = false;
+  // private everPlayedThisSession = false;
   private ended = false;
 
   private totalEnqueuedDurationMs = 0;
@@ -305,7 +305,7 @@ export class LiveAudioPlayer {
     if (!this.playing) {
       this.playing = true;
       this.ended = false;
-      this.everPlayedThisSession = true;
+      // this.everPlayedThisSession = true;
 
       // Anchor timeline on first-ever play
       if (this.startTimeMs == null) {
@@ -538,7 +538,7 @@ export class LiveAudioPlayer {
     this.playing = false;
     this.ended = false;
     this.outputEnabled = false;
-    this.everPlayedThisSession = false;
+    // this.everPlayedThisSession = false;
 
     this.segments = [];
     this.activeSources = [];
