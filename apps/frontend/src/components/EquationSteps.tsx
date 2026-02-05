@@ -5,6 +5,7 @@ import type {
 import type { UIEquationStep } from "../session/useLiveSession";
 import { Fragment, useEffect } from "react";
 import type { AudioPlaybackState } from "../audio/audioTypes";
+import { StepActions } from "./StepActions";
 
 type EquationStepsProps = {
   steps: UIEquationStep[];
@@ -354,69 +355,26 @@ export function EquationSteps({
               <div style={{ fontSize: 16, marginTop: 4 }}>{step.equation}</div>
               <div style={{ opacity: 0.8 }}>{step.text}</div>
 
-              <div style={{ marginTop: 6 }}>
-                <button
-                  onClick={(event) => {
-                    event.stopPropagation();
-                    onReExplain(step.id, "simpler");
-                  }}
-                  style={{
-                    marginRight: 8,
-                    color: "#2563eb",
-                    padding: "4px 8px",
-                    borderRadius: 6,
-                    fontWeight: 600,
-                    cursor: "pointer",
-                    border: "1px solid #2563eb",
-                    background: "white",
-                  }}
-                >
-                  Explain again
-                </button>
-                <button
-                  onClick={(event) => {
-                    event.stopPropagation();
-                    onReExplain(step.id, "example");
-                  }}
-                  style={{
-                    color: "#2563eb",
-                    cursor: "pointer",
-                  }}
-                >
-                  With example
-                </button>
-                {onVisualHint && isCaptureStep && (
-                  <button
-                    onClick={(event) => {
-                      event.stopPropagation();
-                      if (hintIsBusy) return;
-                      onVisualHint(step);
-                      const card = event.currentTarget.closest(
-                        "[data-step-card='true']",
-                      );
-                      const rect =
-                        card instanceof HTMLElement
-                          ? card.getBoundingClientRect()
-                          : event.currentTarget.getBoundingClientRect();
-                      onVisualHintOpen?.(step, rect);
-                    }}
-                    disabled={hintIsBusy}
-                    style={{
-                      marginLeft: 8,
-                      color: hintIsBusy ? "#94a3b8" : "#ea580c",
-                      padding: "4px 8px",
-                      borderRadius: 6,
-                      fontWeight: 600,
-                      cursor: hintIsBusy ? "default" : "pointer",
-                      border: "1px solid rgba(234,88,12,0.6)",
-                      background: "white",
-                      opacity: hintIsBusy ? 0.7 : 1,
-                    }}
-                  >
-                    {hintLabel}
-                  </button>
-                )}
-              </div>
+              <StepActions
+                className="mt-2"
+                available={{
+                  explain: true,
+                  example: true,
+                  visualHint: Boolean(onVisualHint && isCaptureStep),
+                }}
+                visualHintBusy={hintIsBusy}
+                visualHintLabel={hintLabel}
+                visualHintDisabled={hintIsBusy}
+                onExplain={() => onReExplain(step.id, "simpler")}
+                onExample={() => onReExplain(step.id, "example")}
+                onVisualHint={() => {
+                  if (hintIsBusy) return;
+                  onVisualHint?.(step);
+                  const card = document.getElementById(`step-${step.id}`);
+                  const rect = card?.getBoundingClientRect() ?? null;
+                  if (rect) onVisualHintOpen?.(step, rect);
+                }}
+              />
             </div>
             {isAnimated && (
               <span
