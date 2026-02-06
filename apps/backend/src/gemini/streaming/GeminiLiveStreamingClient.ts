@@ -3,6 +3,7 @@ import {
   GeminiStreamChunk,
 } from "./GeminiStreamingClient.js";
 import { GeminiLiveClient } from "../live/GeminiLiveClient.js";
+import { env } from "../../config/env.js";
 
 export class GeminiLiveStreamingClient implements GeminiStreamingClient {
   private client = new GeminiLiveClient();
@@ -16,7 +17,7 @@ export class GeminiLiveStreamingClient implements GeminiStreamingClient {
   ): AsyncIterable<GeminiStreamChunk> {
     try {
       const stream = await this.client.streamGenerate({
-        model: opts?.model ?? "gemini-2.5-flash-lite",
+        model: opts?.model ?? env.gemini.liveStreamingModel,
         input: prompt,
         signal: opts?.signal,
       });

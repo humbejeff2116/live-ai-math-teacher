@@ -75,5 +75,7 @@ export const env = {
     apiKey: requireEnv("GEMINI_API_KEY"),
     projectId: requireEnv("GEMINI_PROJECT_ID"),
     liveWsUrl: requireEnv("GEMINI_LIVE_WS_URL"),
+    liveStreamingModel: process.env.GEMINI_LIVE_STREAMING_MODEL ?? "gemini-2.5-flash-lite",
+    visualHintModel: process.env.GEMINI_VISUAL_HINT_MODEL ?? "gemini-3.0-flash",
   },
 };

@@ -5,8 +5,6 @@ import { buildMockOverlay, extractJson } from "./visualHint.utils.js";
 import { buildUserPrompt, SYSTEM_INSTRUCTION } from "../prompts/index.js";
 import WebSocket from "ws";
 
-const VISUAL_HINT_MODEL = "gemini-3.0-flash";
-
 export class VisualHintHandler {
   constructor(private ws: WebSocket) {
     this.ws = ws;
@@ -51,7 +49,7 @@ export class VisualHintHandler {
 
     try {
       const response = await geminiClient.models.generateContent({
-        model: VISUAL_HINT_MODEL,
+        model: env.gemini.visualHintModel,
         contents: [
           {
             role: "user",
