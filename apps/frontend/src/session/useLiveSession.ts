@@ -10,7 +10,7 @@ import { useLiveAudio } from "../audio/useLiveAudio";
 import { useWebSocketState } from "../state/weSocketState";
 import { useTeacherState } from "./useTeacherState";
 import { AudioStepTimeline } from "../audio/audioStepTimeLine";
-import { classifyConfusion, countSamplesFromBase64 } from "./session.utils";
+import { classifyConfusion } from "./session.utils";
 import { logEvent } from "../lib/debugTimeline";
 import {
   getDecision as getPersonalizationDecision,
@@ -604,22 +604,8 @@ export function useHandleMessage(
           });
         }
 
-        // 1. Calculate how many samples this chunk represents
-        const numSamples = countSamplesFromBase64(audioBase64);
-
         if (isDev) {
-          console.log("[ai_audio_chunk] samples", {
-            stepId,
-            audioMimeType,
-            numSamples,
-          });
-        }
-
-        // 2. Register them to advance the global cursor and create the range
-        stepTimeline.registerChunkSamples(stepId, numSamples);
-
-        if (isDev) {
-          console.log("[ai_audio_chunk] timeline after register", {
+          console.log("[ai_audio_chunk] timeline before enqueue", {
             rangesCount: stepTimeline.getRanges().length,
             totalMs: stepTimeline.getTotalDurationMs(),
             lastRange: stepTimeline.getRanges().slice(-1)[0],

@@ -16,6 +16,7 @@ export class AudioStepTimeline {
 
   // If you use sample-accurate registration, keep this around
   private globalSampleCursor = 0;
+  private globalMsCursor = 0;
 
   // If you want consistent conversion:
   // Gemini PCM is usually 24000Hz
@@ -47,6 +48,7 @@ export class AudioStepTimeline {
     }
 
     this.ranges.push({ stepId, startMs: atMs });
+    this.globalMsCursor = Math.max(this.globalMsCursor, atMs);
     this.ensureSortedIfNeeded();
   }
 
@@ -59,6 +61,7 @@ export class AudioStepTimeline {
     if (range && range.endSample == null) {
       range.endMs = atMs;
     }
+    this.globalMsCursor = Math.max(this.globalMsCursor, atMs);
   }
 
   /**
@@ -71,14 +74,25 @@ export class AudioStepTimeline {
     const existing = this.ranges.find((r) => r.stepId === stepId);
 
     if (existing) {
-      existing.startMs = Math.min(existing.startMs, startMs);
-      existing.endMs = Math.max(existing.endMs ?? startMs, endMs);
+      const prevStart = existing.startMs;
+      const nextStart = Math.min(existing.startMs, startMs);
+      const nextEnd = Math.max(existing.endMs ?? nextStart, endMs);
+
+      existing.startMs = nextStart;
+      existing.endMs = nextEnd;
+
+      if (nextStart !== prevStart) {
+        this.ranges.sort((a, b) => a.startMs - b.startMs);
+        this.lastActiveIndex = 0;
+      }
+      this.globalMsCursor = Math.max(this.globalMsCursor, nextEnd);
     } else {
       this.insertSortedByStartMs({
         stepId,
         startMs,
         endMs,
       });
+      this.globalMsCursor = Math.max(this.globalMsCursor, endMs);
     }
 
     // Keep monotonic cache valid (ranges may have moved)
@@ -116,6 +130,7 @@ export class AudioStepTimeline {
 
     const startMs = (startSample / this.sampleRate) * 1000;
     const endMs = (endSample / this.sampleRate) * 1000;
+    this.globalMsCursor = Math.max(this.globalMsCursor, endMs);
 
     // Merge/expand per step id (step may receive multiple chunks)
     const existing = this.ranges.find((r) => r.stepId === stepId);
@@ -219,7 +234,8 @@ export class AudioStepTimeline {
   }
 
   private cursorMs(): number {
-    return (this.globalSampleCursor / this.sampleRate) * 1000;
+    const sampleMs = (this.globalSampleCursor / this.sampleRate) * 1000;
+    return Math.max(this.globalMsCursor, sampleMs);
   }
 
   getCursorMs(): number {
@@ -310,6 +326,7 @@ export class AudioStepTimeline {
     this.ranges = [];
     this.lastActiveIndex = 0;
     this.globalSampleCursor = 0;
+    this.globalMsCursor = 0;
   }
 
   destroy() {

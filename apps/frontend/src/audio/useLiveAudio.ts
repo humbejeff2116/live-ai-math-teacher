@@ -128,23 +128,12 @@ export function useLiveAudio(getAudioStepTimeline: () => AudioStepTimeline) {
         mimeType?.includes("L16") ||
         mimeType?.includes("linear16");
 
-      // Only register timeline for real step audio
-      if (timeline && isPcm && stepId && !isFreeform) {
-        let bytes = Uint8Array.from(atob(base64), (c) => c.charCodeAt(0));
-        if (bytes.length % 2 === 1) bytes = bytes.slice(0, bytes.length - 1);
+      const seg = await player.enqueueChunk(base64, mimeType);
 
-        const chunkSamples = bytes.length / 2;
-
-        if (chunkSamples > 0) {
-          // console.log("[liveAudio.playChunk] Registering", {
-          //   stepId,
-          //   chunkSamples,
-          // });
-          timeline.registerChunkSamples(stepId, chunkSamples);
-        }
+      if (seg && timeline && isPcm && stepId && !isFreeform) {
+        timeline.registerStepRange(stepId, seg.startMs, seg.endMs);
       }
 
-      await player.enqueueChunk(base64, mimeType);
       const totalMs = player.getBufferedDurationMs();
       const pendingSec = player.getPendingBufferedSec();
       setBufferedDurationMs(totalMs);
